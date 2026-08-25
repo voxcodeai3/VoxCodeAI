@@ -1,23 +1,17 @@
 /**
- * VoxCode AI service — provider abstraction.
+ * VoxCode AI service — multi-model failover with 1-hour sleep.
  *
  * The rest of the application calls generateResponse() and never talks to an
- * AI vendor directly. The active provider is selected from environment
- * variables (all credentials live in backend/.env, never in the frontend):
- *
- *   AI_PROVIDER  – one of: gemini | openai | openrouter | compatible | (empty)
- *   AI_API_KEY   – API key for the selected provider
- *   AI_BASE_URL  – optional base URL for OpenAI-compatible endpoints
- *   AI_MODEL     – optional model override for the selected provider
- *
- * When AI_PROVIDER is "gemini" the service calls the Google Generative
- * Language API directly (no SDK required).  For every other value it calls
- * an OpenAI-compatible /chat/completions endpoint — this covers OpenAI,
- * OpenRouter, DeepSeek, Groq, Ollama, and any other compatible backend.
- *
- * The developer manually fills in the real .env values.
- * No provider SDK is installed until the provider is specified.
+ * AI vendor directly.  Model selection and failover are handled by
+ * modelManager.js.  If the selected model is rate-limited, the request
+ * automatically retries on the next available model.
  */
+
+const {
+  modelManager,
+  categorizeError,
+  isRetryable,
+} = require("./modelManager");
 
 const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta";
 
@@ -71,18 +65,6 @@ Answer STRICTLY as minified JSON on a single line, with no markdown fences and n
 {"reply":"<your explanation to the student>","code":<null or "<code string>">,"response_mode":"<text|voice|text_voice>"}`;
 }
 
-/* ── Provider detection ─────────────────────────────────────────────────── */
-
-function activeProvider() {
-  const p = (process.env.AI_PROVIDER || "").trim().toLowerCase();
-  if (p === "gemini") return "gemini";
-  if (p === "openai") return "openai";
-  if (p === "openrouter") return "openrouter";
-  if (p === "compatible") return "compatible";
-  if (process.env.AI_API_KEY) return "compatible";
-  return null;
-}
-
 /* ── Response parsing ───────────────────────────────────────────────────── */
 
 function extractJson(raw) {
@@ -122,12 +104,48 @@ async function fetchWithTimeout(url, options) {
   }
 }
 
+/* ── Provider call dispatch (uses per-model credentials) ────────────────── */
+
+async function callModel(model, { systemPrompt, history, message }) {
+  const provider = (model.provider || "").toLowerCase();
+
+  if (provider === "gemini") {
+    return callGemini(model, { systemPrompt, history, message });
+  }
+
+  // Everything else goes through OpenAI-compatible endpoint.
+  let baseUrl;
+  const extraHeaders = {};
+
+  if (provider === "openrouter") {
+    baseUrl = model.baseUrl || DEFAULT_BASE_URLS.openrouter;
+    extraHeaders["HTTP-Referer"] = process.env.FRONTEND_URL || "http://localhost:5173";
+  } else if (provider === "openai") {
+    baseUrl = model.baseUrl || DEFAULT_BASE_URLS.openai;
+  } else {
+    baseUrl = model.baseUrl;
+    if (!baseUrl) {
+      throw Object.assign(
+        new Error("AI_BASE_URL is required for the 'compatible' provider."),
+        { code: "AI_NOT_CONFIGURED" }
+      );
+    }
+  }
+
+  return callOpenAICompatible(model, {
+    baseUrl,
+    systemPrompt,
+    history,
+    message,
+    extraHeaders,
+  });
+}
+
 /* ── Gemini (direct REST, no SDK) ───────────────────────────────────────── */
 
-async function callGemini({ systemPrompt, history, message }) {
-  const model = process.env.AI_MODEL || DEFAULT_MODELS.gemini;
-  const apiKey = process.env.AI_API_KEY;
-  const url = `${GEMINI_API_URL}/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
+async function callGemini(model, { systemPrompt, history, message }) {
+  const modelName = model.name || DEFAULT_MODELS.gemini;
+  const url = `${GEMINI_API_URL}/models/${modelName}:generateContent?key=${encodeURIComponent(model.apiKey)}`;
 
   const contents = [
     ...history.map((m) => ({
@@ -153,7 +171,9 @@ async function callGemini({ systemPrompt, history, message }) {
 
   if (!res.ok) {
     const body = await res.text().catch(() => "");
-    throw new Error(`Gemini API error ${res.status}: ${body.slice(0, 300)}`);
+    const err = new Error(`Gemini API error ${res.status}: ${body.slice(0, 300)}`);
+    err.status = res.status;
+    throw err;
   }
 
   const data = await res.json();
@@ -161,34 +181,43 @@ async function callGemini({ systemPrompt, history, message }) {
   return parts.map((p) => p.text || "").join("");
 }
 
-/* ── OpenAI-compatible (works for openai, openrouter, compatible) ──────── */
+/* ── OpenAI-compatible ──────────────────────────────────────────────────── */
 
-async function callOpenAICompatible({ baseUrl, apiKey, systemPrompt, history, message, extraHeaders = {} }) {
-  const res = await fetchWithTimeout(`${baseUrl.replace(/\/$/, "")}/chat/completions`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${apiKey}`,
-      ...extraHeaders,
-    },
-    body: JSON.stringify({
-      model: process.env.AI_MODEL || DEFAULT_MODELS.compatible,
-      temperature: 0.7,
-      max_tokens: 1600,
-      messages: [
-        { role: "system", content: systemPrompt },
-        ...history.map((m) => ({
-          role: m.role === "user" ? "user" : "assistant",
-          content: m.content,
-        })),
-        { role: "user", content: message },
-      ],
-    }),
-  });
+async function callOpenAICompatible(
+  model,
+  { baseUrl, systemPrompt, history, message, extraHeaders = {} }
+) {
+  const modelName = model.name || DEFAULT_MODELS.compatible;
+  const res = await fetchWithTimeout(
+    `${baseUrl.replace(/\/$/, "")}/chat/completions`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        Authorization: `Bearer ${model.apiKey}`,
+        ...extraHeaders,
+      },
+      body: JSON.stringify({
+        model: modelName,
+        temperature: 0.7,
+        max_tokens: 1600,
+        messages: [
+          { role: "system", content: systemPrompt },
+          ...history.map((m) => ({
+            role: m.role === "user" ? "user" : "assistant",
+            content: m.content,
+          })),
+          { role: "user", content: message },
+        ],
+      }),
+    }
+  );
 
   if (!res.ok) {
     const body = await res.text().catch(() => "");
-    throw new Error(`AI API error ${res.status}: ${body.slice(0, 300)}`);
+    const err = new Error(`AI API error ${res.status}: ${body.slice(0, 300)}`);
+    err.status = res.status;
+    throw err;
   }
 
   const data = await res.json();
@@ -198,8 +227,10 @@ async function callOpenAICompatible({ baseUrl, apiKey, systemPrompt, history, me
 /* ── Public interface ───────────────────────────────────────────────────── */
 
 /**
- * Generate a tutor response.
- * @returns {{ reply: string, code: string|null, responseMode: 'text'|'voice'|'text_voice' }}
+ * Generate a tutor response with automatic multi-model failover.
+ *
+ * @returns {{ reply: string, code: string|null, responseMode: string }}
+ * @throws with code ALL_MODELS_UNAVAILABLE when every model is exhausted.
  */
 async function generateResponse({
   history = [],
@@ -208,15 +239,9 @@ async function generateResponse({
   level = "beginner",
   teachingMode = "learn",
 }) {
-  const provider = activeProvider();
-  if (!provider) {
-    const err = new Error("AI_NOT_CONFIGURED");
-    err.code = "AI_NOT_CONFIGURED";
-    throw err;
-  }
+  modelManager.init();
 
-  const apiKey = process.env.AI_API_KEY;
-  if (!apiKey) {
+  if (modelManager.size === 0) {
     const err = new Error("AI_NOT_CONFIGURED");
     err.code = "AI_NOT_CONFIGURED";
     throw err;
@@ -224,56 +249,77 @@ async function generateResponse({
 
   const systemPrompt = buildSystemPrompt({ language, level, teachingMode });
   const trimmedHistory = history.slice(-MAX_HISTORY_MESSAGES);
+  const attempted = new Set(); // prevent infinite failover loops
 
-  let raw;
+  // Failover loop — try each available model once per request.
+  for (let attempt = 0; attempt < modelManager.size; attempt++) {
+    const model = modelManager.select();
 
-  if (provider === "gemini") {
-    raw = await callGemini({ systemPrompt, history: trimmedHistory, message });
-  } else {
-    let baseUrl;
-    const extraHeaders = {};
+    if (!model) break; // no more available models
 
-    if (provider === "openrouter") {
-      baseUrl = process.env.AI_BASE_URL || DEFAULT_BASE_URLS.openrouter;
-      extraHeaders["HTTP-Referer"] = process.env.FRONTEND_URL || "http://localhost:5173";
-    } else if (provider === "openai") {
-      baseUrl = process.env.AI_BASE_URL || DEFAULT_BASE_URLS.openai;
-    } else {
-      // "compatible" — requires AI_BASE_URL
-      if (!process.env.AI_BASE_URL) {
-        const err = new Error("AI_BASE_URL is required for the 'compatible' provider.");
-        err.code = "AI_NOT_CONFIGURED";
+    attempted.add(model.id);
+
+    try {
+      const raw = await callModel(model, {
+        systemPrompt,
+        history: trimmedHistory,
+        message,
+      });
+
+      // Success — release model back to pool and parse the response.
+      modelManager.release(model.id);
+
+      const parsed = extractJson(raw);
+
+      let reply = typeof parsed.reply === "string" ? parsed.reply.trim() : "";
+      if (!reply && typeof parsed === "string") reply = parsed.trim();
+      if (!reply && typeof parsed.response === "string") reply = parsed.response.trim();
+      if (!reply) reply = typeof parsed === "object" ? JSON.stringify(parsed) : String(parsed);
+
+      const code =
+        typeof parsed.code === "string" && parsed.code.trim() ? parsed.code : null;
+
+      const validModes = ["text", "voice", "text_voice"];
+      const responseMode = validModes.includes(parsed.response_mode)
+        ? parsed.response_mode
+        : heuristicModality(reply, code);
+
+      return { reply, code, responseMode };
+    } catch (err) {
+      const category = categorizeError(err);
+
+      if (category === "RATE_LIMITED") {
+        // Put this model to sleep and try the next one.
+        modelManager.markRateLimited(model.id, category);
+        continue;
+      }
+
+      if (isRetryable(category)) {
+        // Temporary failure — mark error, try next model.
+        modelManager.markError(model.id, category);
+        continue;
+      }
+
+      // Non-retryable error (auth, bad request) — mark unavailable,
+      // but still try remaining models in case they work.
+      modelManager.markUnavailable(model.id, category);
+
+      // If it's a config error and this was the only model, throw immediately.
+      if (modelManager.size === 1) {
+        if (category === "AUTH_ERROR") {
+          const err2 = new Error("AI_NOT_CONFIGURED");
+          err2.code = "AI_NOT_CONFIGURED";
+          throw err2;
+        }
         throw err;
       }
-      baseUrl = process.env.AI_BASE_URL;
     }
-
-    raw = await callOpenAICompatible({
-      baseUrl,
-      apiKey,
-      systemPrompt,
-      history: trimmedHistory,
-      message,
-      extraHeaders,
-    });
   }
 
-  const parsed = extractJson(raw);
-
-  let reply = typeof parsed.reply === "string" ? parsed.reply.trim() : "";
-  if (!reply && typeof parsed === "string") reply = parsed.trim();
-  if (!reply && typeof parsed.response === "string") reply = parsed.response.trim();
-  if (!reply) reply = typeof parsed === "object" ? JSON.stringify(parsed) : String(parsed);
-
-  const code =
-    typeof parsed.code === "string" && parsed.code.trim() ? parsed.code : null;
-
-  const validModes = ["text", "voice", "text_voice"];
-  const responseMode = validModes.includes(parsed.response_mode)
-    ? parsed.response_mode
-    : heuristicModality(reply, code);
-
-  return { reply, code, responseMode };
+  // All models exhausted.
+  const err = new Error("All configured AI models are temporarily unavailable.");
+  err.code = "ALL_MODELS_UNAVAILABLE";
+  throw err;
 }
 
 module.exports = { generateResponse };

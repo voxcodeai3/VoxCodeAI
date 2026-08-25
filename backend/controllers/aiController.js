@@ -1,6 +1,7 @@
 const mongoose = require("mongoose");
 const Conversation = require("../models/Conversation");
 const { generateResponse } = require("../services/aiService");
+const { modelManager } = require("../services/modelManager");
 
 const MAX_MESSAGE_LENGTH = 4000;
 const HISTORY_WINDOW = 12;
@@ -69,6 +70,12 @@ async function chat(req, res) {
         return res.status(503).json({
           message:
             "The AI engine isn't configured on the server yet. Please add your provider API key to the backend environment.",
+        });
+      }
+      if (error.code === "ALL_MODELS_UNAVAILABLE") {
+        return res.status(503).json({
+          message:
+            "VoxCode's AI models are temporarily unavailable. Please try again later.",
         });
       }
       console.error("AI generation failed:", error.message);
@@ -152,4 +159,19 @@ async function clearConversation(req, res) {
   }
 }
 
-module.exports = { chat, getConversation, clearConversation };
+/**
+ * GET /api/ai/models — model pool status (no secrets exposed).
+ */
+function getModelStatus(req, res) {
+  try {
+    modelManager.init();
+    return res.json({ models: modelManager.getStatus() });
+  } catch (error) {
+    console.error("getModelStatus error:", error.message);
+    return res.status(500).json({
+      message: "Something went wrong on our side. Please try again.",
+    });
+  }
+}
+
+module.exports = { chat, getConversation, clearConversation, getModelStatus };
