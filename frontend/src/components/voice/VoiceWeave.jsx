@@ -4,10 +4,12 @@ import { speechEnvelope } from './audioSim';
 const NB = 520;
 
 const PARAMS = {
-  idle:      { speed: 0.45, glow: 0.7,  reach: 0.8,   particles: 0.5 },
-  listening: { speed: 0.95, glow: 1.15, reach: 1.15,  particles: 1.0 },
-  thinking:  { speed: 1.6,  glow: 0.9,  reach: 0.9,   particles: 1.3 },
-  speaking:  { speed: 1.08, glow: 1.2,  reach: 1.25,  particles: 1.15 },
+  idle:        { speed: 0.45, glow: 0.7,  reach: 0.8,   particles: 0.5 },
+  listening:   { speed: 0.95, glow: 1.15, reach: 1.15,  particles: 1.0 },
+  transcribing:{ speed: 1.0,  glow: 1.1,  reach: 1.08,  particles: 1.05 },
+  thinking:    { speed: 1.6,  glow: 0.9,  reach: 0.9,   particles: 1.3 },
+  speaking:    { speed: 1.08, glow: 1.2,  reach: 1.25,  particles: 1.15 },
+  error:       { speed: 0.55, glow: 0.65, reach: 0.75,  particles: 0.45 },
 };
 
 const CYAN    = [64, 226, 255];
@@ -61,7 +63,7 @@ export default function VoiceWeave({
     const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const motion = reduceMotion ? 0.18 : 1;
 
-    const cur = { ...PARAMS[live.current.state] };
+    const cur = { ...(PARAMS[live.current.state] || PARAMS.idle) };
     let t = Math.random() * 100;
     let ts = Math.random() * 60;
     let last = performance.now();

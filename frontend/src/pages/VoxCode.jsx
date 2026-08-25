@@ -1,31 +1,21 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
 import { Mic, Square, LogOut } from 'lucide-react';
 import VoiceWeave from '../components/voice/VoiceWeave';
 import HorizontalWaveform from '../components/voice/HorizontalWaveform';
 import StarField from '../components/voice/StarField';
+import QuickActions from '../components/voice/QuickActions';
 import TextConsole from '../components/conversation/TextConsole';
 import { useAuth } from '../context/AuthContext';
+import { useVoice } from '../context/VoiceContext';
+import { useAI } from '../context/AIContext';
 
 const STATUS_MAP = {
-  idle:      { title: 'READY WHEN YOU ARE', subtitle: 'How can I help you today?', dots: false },
-  listening: { title: "I'M LISTENING",       subtitle: 'Listening for your command...', dots: true },
-  thinking:  { title: 'THINKING...',         subtitle: 'Processing your request...', dots: false },
-  speaking:  { title: 'SPEAKING...',         subtitle: 'VoxCode is speaking...', dots: false },
+  idle:         { title: 'READY WHEN YOU ARE', subtitle: 'How can I help you today?', dots: false },
+  listening:    { title: "I'M LISTENING",      subtitle: 'Listening for your command...', dots: true },
+  transcribing: { title: "I'M LISTENING",      subtitle: '', dots: true },
+  thinking:     { title: 'THINKING...',        subtitle: 'Processing your request...', dots: false },
+  speaking:     { title: 'SPEAKING...',        subtitle: 'VoxCode is speaking...', dots: false },
+  error:        { title: 'HMM, TRY AGAIN',     subtitle: '', dots: false },
 };
-
-const RESPONSES = [
-  'Great question! In JavaScript you can reverse a string by splitting it into an array, calling reverse, then joining it back together.',
-  'Sure. Think of a loop like a circle that repeats until a condition is met — let me walk you through a simple for loop example step by step.',
-  'A good way to debug this is to add a console log right before the failing line and inspect the values of your variables at that point.',
-  'Functions are reusable blocks of code. Let me show you how to define one with parameters and return a value.',
-  'In React, state is data that can change over time. When state updates, the component re-renders automatically.',
-];
-
-const SIMULATED_TRANSCRIPTS = [
-  'how do i reverse a string in javascript',
-  'explain for loops to me',
-  'how do i debug my code',
-];
 
 function HoloRings({ active }) {
   const boost = active ? 1 : 0;
@@ -63,235 +53,36 @@ function HoloRings({ active }) {
 
 export default function VoxCode() {
   const { logout } = useAuth();
-  const [voiceState, setVoiceState] = useState('idle');
-  const [transcript, setTranscript] = useState('');
-  const [subtitleOverride, setSubtitleOverride] = useState('');
+  const {
+    interactionState,
+    isListening,
+    isSpeaking,
+    isThinking,
+    transcript,
+    errorMessage,
+    frequencyData,
+    support,
+    startListening,
+    stopListening,
+  } = useVoice();
+  const { activeAction, triggerQuickAction } = useAI();
 
-  const recognitionRef = useRef(null);
-  const timersRef = useRef([]);
-  const spokenTokenRef = useRef(0);
-  const finishingRef = useRef(false);
+  const stateConfig = STATUS_MAP[interactionState] || STATUS_MAP.idle;
 
-  // Audio analysis refs
-  const audioContextRef = useRef(null);
-  const analyserRef = useRef(null);
-  const micStreamRef = useRef(null);
-  const mediaStreamSourceRef = useRef(null);
-  const speechSourceRef = useRef(null);
-  const frequencyDataRef = useRef(new Uint8Array(128));
-  const animationFrameRef = useRef(0);
-  const isAnalysingRef = useRef(false);
+  let subtitle = stateConfig.subtitle;
+  if ((isListening || interactionState === 'transcribing') && transcript) {
+    subtitle = `"${transcript}"`;
+  } else if (interactionState === 'error' && errorMessage) {
+    subtitle = errorMessage;
+  }
 
-  const addTimer = (id) => { timersRef.current.push(id); return id; };
-  const clearTimers = () => { timersRef.current.forEach((id) => clearTimeout(id)); timersRef.current = []; };
+  // Tap to start / tap to finalize what you said.
+  const toggleVoice = () => {
+    if (isListening) stopListening();
+    else if (!isThinking && !isSpeaking) startListening();
+  };
 
-  // Initialize AudioContext and Analyser
-  const initAudioAnalysis = useCallback(async () => {
-    if (audioContextRef.current) return;
-    try {
-      const ctx = new (window.AudioContext || window.webkitAudioContext)();
-      if (ctx.state === 'suspended') ctx.resume().catch(() => {});
-      audioContextRef.current = ctx;
-      const analyser = ctx.createAnalyser();
-      analyser.fftSize = 256;
-      analyser.smoothingTimeConstant = 0.7;
-      analyserRef.current = analyser;
-      frequencyDataRef.current = new Uint8Array(analyser.frequencyBinCount);
-    } catch (e) {
-      console.warn('AudioContext not available:', e);
-    }
-  }, []);
-
-  // Connect microphone stream to analyser
-  const connectMicToAnalyser = useCallback(async (stream) => {
-    if (!audioContextRef.current || !analyserRef.current) await initAudioAnalysis();
-    if (!audioContextRef.current || !analyserRef.current) return;
-
-    try {
-      if (micStreamRef.current) {
-        micStreamRef.current.getTracks().forEach(t => t.stop());
-      }
-      micStreamRef.current = stream;
-      if (mediaStreamSourceRef.current) {
-        mediaStreamSourceRef.current.disconnect();
-      }
-      mediaStreamSourceRef.current = audioContextRef.current.createMediaStreamSource(stream);
-      mediaStreamSourceRef.current.connect(analyserRef.current);
-    } catch (e) {
-      console.warn('Failed to connect mic to analyser:', e);
-    }
-  }, [initAudioAnalysis]);
-
-  // Disconnect microphone
-  const disconnectMic = useCallback(() => {
-    if (mediaStreamSourceRef.current) {
-      mediaStreamSourceRef.current.disconnect();
-      mediaStreamSourceRef.current = null;
-    }
-    if (micStreamRef.current) {
-      micStreamRef.current.getTracks().forEach(t => t.stop());
-      micStreamRef.current = null;
-    }
-  }, []);
-
-  // Start analysis loop
-  const startAnalysis = useCallback(() => {
-    if (isAnalysingRef.current) return;
-    isAnalysingRef.current = true;
-    const analyse = () => {
-      if (!isAnalysingRef.current || !analyserRef.current) return;
-      analyserRef.current.getByteFrequencyData(frequencyDataRef.current);
-      animationFrameRef.current = requestAnimationFrame(analyse);
-    };
-    analyse();
-  }, []);
-
-  // Stop analysis loop
-  const stopAnalysis = useCallback(() => {
-    isAnalysingRef.current = false;
-    if (animationFrameRef.current) {
-      cancelAnimationFrame(animationFrameRef.current);
-      animationFrameRef.current = 0;
-    }
-  }, []);
-
-  // speechSynthesis audio cannot be tapped directly — the speaking state drives
-  // a synchronized waveform animation inside the visualizers instead.
-  const speakWithAnalysis = useCallback((text, onEnd) => {
-    if (!('speechSynthesis' in window)) {
-      onEnd?.();
-      return;
-    }
-    window.speechSynthesis.cancel();
-    const utterance = new SpeechSynthesisUtterance(text);
-    utterance.rate = 1.02;
-    utterance.pitch = 1.05;
-    utterance.onend = onEnd;
-    utterance.onerror = onEnd;
-    window.speechSynthesis.speak(utterance);
-  }, []);
-
-  const respond = useCallback((said) => {
-    const reply = RESPONSES[Math.floor(Math.random() * RESPONSES.length)];
-    setSubtitleOverride(reply);
-    setVoiceState('speaking');
-    const token = ++spokenTokenRef.current;
-
-    let spoke = false;
-    const finish = () => {
-      if (spokenTokenRef.current !== token || spoke) return;
-      spoke = true;
-      setVoiceState('idle');
-      setSubtitleOverride('');
-    };
-
-    speakWithAnalysis(reply, finish);
-    addTimer(setTimeout(finish, Math.max(3000, reply.split(' ').length * 420)));
-  }, [speakWithAnalysis]);
-
-  const handleSpeechEnd = useCallback((text) => {
-    if (finishingRef.current) return;
-    finishingRef.current = true;
-    clearTimers();
-    const said = (text || '').trim();
-    setTimeout(() => { finishingRef.current = false; }, 100);
-    if (!said) { setVoiceState('idle'); return; }
-    setTranscript(said);
-    setSubtitleOverride(`"${said}"`);
-    setVoiceState('thinking');
-    addTimer(setTimeout(() => respond(said), 1600 + Math.random() * 800));
-  }, [respond]);
-
-  const stopEverything = useCallback(() => {
-    clearTimers();
-    try { recognitionRef.current?.abort?.(); } catch { /* noop */ }
-    recognitionRef.current = null;
-    try { window.speechSynthesis?.cancel?.(); } catch { /* noop */ }
-    spokenTokenRef.current += 1;
-    disconnectMic();
-  }, [disconnectMic]);
-
-  useEffect(() => stopEverything, [stopEverything]);
-
-  // Start/stop analysis based on voice state
-  useEffect(() => {
-    if (voiceState === 'listening' || voiceState === 'speaking') {
-      startAnalysis();
-    } else {
-      stopAnalysis();
-    }
-    return () => stopAnalysis();
-  }, [voiceState, startAnalysis, stopAnalysis]);
-
-  const startListening = useCallback(async () => {
-    setTranscript('');
-    setSubtitleOverride('');
-    setVoiceState('listening');
-
-    const SR = typeof window !== 'undefined' && (window.SpeechRecognition || window.webkitSpeechRecognition);
-    if (SR) {
-      try {
-        const recognition = new SR();
-        recognition.lang = 'en-US';
-        recognition.interimResults = true;
-        recognition.maxAlternatives = 1;
-        let finalText = '';
-        recognition.onresult = (event) => {
-          let interim = '';
-          for (let i = event.resultIndex; i < event.results.length; i++) {
-            const res = event.results[i];
-            if (res.isFinal) finalText += res[0].transcript;
-            else interim += res[0].transcript;
-          }
-          setTranscript((finalText + interim).trim());
-        };
-        recognition.onend = () => { recognitionRef.current = null; handleSpeechEnd(finalText); };
-        recognition.onerror = () => { recognitionRef.current = null; handleSpeechEnd(finalText); };
-        recognitionRef.current = recognition;
-
-        // Get microphone stream and connect to analyser
-        try {
-          const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-          connectMicToAnalyser(stream);
-          recognition.start();
-          return;
-        } catch (e) {
-          console.warn('Microphone access denied:', e);
-        }
-      } catch { recognitionRef.current = null; }
-    }
-    // Fallback simulation
-    const fake = SIMULATED_TRANSCRIPTS[Math.floor(Math.random() * SIMULATED_TRANSCRIPTS.length)];
-    let i = 0;
-    const typeSim = () => { i += 1; setTranscript(fake.slice(0, i)); if (i < fake.length) addTimer(setTimeout(typeSim, 55)); };
-    addTimer(setTimeout(typeSim, 400));
-    addTimer(setTimeout(() => handleSpeechEnd(fake), 3400));
-  }, [handleSpeechEnd, connectMicToAnalyser]);
-
-  const toggleVoice = useCallback(() => {
-    if (voiceState === 'listening') {
-      stopEverything();
-      setVoiceState('idle');
-      setTranscript('');
-      setSubtitleOverride('');
-      return;
-    }
-    if (voiceState === 'idle') startListening();
-  }, [voiceState, startListening, stopEverything]);
-
-  const stateConfig = STATUS_MAP[voiceState] || STATUS_MAP.idle;
-
-  const subtitle =
-    voiceState === 'listening' && transcript ? `"${transcript}"`
-      : voiceState === 'speaking' && subtitleOverride ? subtitleOverride
-        : voiceState === 'thinking' && subtitleOverride ? subtitleOverride
-          : stateConfig.subtitle;
-
-  const isListening = voiceState === 'listening';
-  const isSpeaking = voiceState === 'speaking';
-
-  // Get frequency data for visualizers (stable ref contents, mutated per frame)
-  const frequencyData = frequencyDataRef.current;
+  const voiceUnavailable = !support.speech;
 
   return (
     <div className="relative h-dvh w-full select-none overflow-hidden bg-[#010208] text-white">
@@ -356,7 +147,7 @@ export default function VoxCode() {
           {/* layer 2 — horizontal signal passing behind the core,
               anchored to this container's exact vertical center */}
           <HorizontalWaveform
-            state={voiceState}
+            state={interactionState}
             frequencyData={frequencyData}
             className="pointer-events-none absolute left-1/2 top-1/2 h-[min(26vw,170px)] w-[96vw] -translate-x-1/2 -translate-y-1/2 opacity-90"
           />
@@ -366,7 +157,7 @@ export default function VoxCode() {
 
           {/* layers 4 + 5 — circular audio waveform + organic AI energy core */}
           <VoiceWeave
-            state={voiceState}
+            state={interactionState}
             frequencyData={frequencyData}
             className="absolute inset-0"
           />
@@ -417,8 +208,8 @@ export default function VoxCode() {
           </div>
 
           <p
-            className="mt-3 max-w-[90vw] truncate text-center text-xs font-light sm:text-sm md:mt-3.5 md:text-base"
-            style={{ color: 'rgba(110,160,235,0.55)', letterSpacing: '0.08em' }}
+            className={`mt-3 max-w-[90vw] text-center text-xs font-light sm:text-sm md:mt-3.5 md:text-base ${transcript && isListening ? '' : 'truncate'}`}
+            style={{ color: 'rgba(110,160,235,0.55)', letterSpacing: '0.08em', minHeight: '1.25rem' }}
           >
             {subtitle}
           </p>
@@ -444,8 +235,8 @@ export default function VoxCode() {
           <button
             type="button"
             onClick={toggleVoice}
-            disabled={voiceState === 'thinking' || voiceState === 'speaking'}
-            aria-label={isListening ? 'Stop listening' : voiceState === 'idle' ? 'Start speaking' : stateConfig.title}
+            disabled={isThinking || isSpeaking || voiceUnavailable}
+            aria-label={isListening ? 'Stop listening' : interactionState === 'idle' ? 'Start speaking' : stateConfig.title}
             className={`group relative mt-7 flex h-16 w-16 items-center justify-center rounded-full border backdrop-blur-xl transition-all duration-500 hover:scale-[1.06] active:scale-95 disabled:pointer-events-none disabled:opacity-40 md:h-[72px] md:w-[72px] ${isListening ? 'border-[#7f97ff]/60' : 'border-[#5a67df]/30 hover:border-[#8b93ff]/60'}`}
             style={{
               background: 'rgba(8,12,28,0.55)',
@@ -483,9 +274,24 @@ export default function VoxCode() {
             className="mt-3.5 text-[9px] font-light uppercase md:text-[10px]"
             style={{ color: 'rgba(90,130,210,0.45)', letterSpacing: '0.35em' }}
           >
-            {isListening ? 'Listening · tap to stop' : voiceState === 'thinking' ? 'Processing' : voiceState === 'speaking' ? 'Speaking' : 'Tap mic to start'}
+            {isListening
+              ? 'Listening · tap to stop'
+              : isThinking
+                ? 'Processing'
+                : isSpeaking
+                  ? 'Speaking'
+                  : voiceUnavailable
+                    ? 'Use the text console below'
+                    : 'Tap mic to start'}
           </p>
         </div>
+
+        {/* ── quick actions — set teaching mode & kick off a conversation ── */}
+        <QuickActions
+          selected={activeAction}
+          onSelect={triggerQuickAction}
+          className="mt-5 justify-center"
+        />
       </main>
 
       <TextConsole />

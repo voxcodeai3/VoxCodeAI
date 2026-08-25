@@ -1,45 +1,30 @@
-import { useCallback, useState } from 'react';
-import { Maximize, Minus, X, MessageCircle, Microchip } from 'lucide-react';
+import { useEffect, useRef, useState } from 'react';
+import { Maximize, Minus, X, MessageCircle, Microchip, Trash2 } from 'lucide-react';
 import ConversationPanel from './ConversationPanel';
 import MessageComposer from './MessageComposer';
-
-const INITIAL_MESSAGES = [
-  {
-    id: 1,
-    type: 'ai',
-    content:
-      "Hello! I'm VoxCode, your AI coding teacher. How can I help you today?",
-    timestamp: new Date(Date.now() - 2000),
-    avatar: null,
-  },
-];
+import { useAI } from '../../context/AIContext';
 
 function TextConsole({ expanded = false }) {
   const [isExpanded, setIsExpanded] = useState(expanded);
-  const [messages, setMessages] = useState(INITIAL_MESSAGES);
-  const [isTyping, setIsTyping] = useState(false);
+  const { messages, isThinking, clearConversation } = useAI();
+  const scrollRef = useRef(null);
+  const wasExpandedRef = useRef(isExpanded);
 
-  const handleSend = useCallback((text) => {
-    setMessages((prev) => [
-      ...prev,
-      { id: Date.now(), type: 'user', content: text, timestamp: new Date(), avatar: null },
-    ]);
-    setIsTyping(true);
-    setTimeout(() => {
-      setIsTyping(false);
-      setMessages((prev) => [
-        ...prev,
-        {
-          id: Date.now() + 1,
-          type: 'ai',
-          content:
-            'Great question! I can help you with coding concepts, debugging, code reviews, and more. Try asking me about JavaScript, Python, React, or any programming topic!',
-          timestamp: new Date(),
-          avatar: null,
-        },
-      ]);
-    }, 1500);
-  }, []);
+  // Auto-scroll to the newest message while the console is open.
+  useEffect(() => {
+    if (!isExpanded) return undefined;
+    const el = scrollRef.current;
+    if (el) el.scrollTop = el.scrollHeight;
+    return undefined;
+  }, [messages, isThinking, isExpanded]);
+
+  // Reset scroll when expanding.
+  useEffect(() => {
+    if (isExpanded && !wasExpandedRef.current && scrollRef.current) {
+      scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
+    }
+    wasExpandedRef.current = isExpanded;
+  }, [isExpanded]);
 
   return (
     <div className="fixed bottom-4 right-4 z-50">
@@ -69,12 +54,19 @@ function TextConsole({ expanded = false }) {
               <div className="space-y-1">
                 <p className="text-sm font-semibold text-white">VOXCODE CONSOLE</p>
                 <p className="flex items-center gap-2 text-xs text-cyan-300">
-                  <span className="h-2 w-2 rounded-full bg-cyan-400 animate-pulse" />
-                  <span>ONLINE</span>
+                  <span className={`h-2 w-2 rounded-full ${isThinking ? 'bg-yellow-400' : 'bg-cyan-400 animate-pulse'}`} />
+                  <span>{isThinking ? 'THINKING' : 'ONLINE'}</span>
                 </p>
               </div>
             </div>
             <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={clearConversation}
+                aria-label="Clear conversation"
+              >
+                <Trash2 className="h-4 w-4 text-cyan-400/60 hover:text-red-400 transition-colors" />
+              </button>
               <button
                 type="button"
                 onClick={() => setIsExpanded(false)}
@@ -91,12 +83,14 @@ function TextConsole({ expanded = false }) {
               </button>
             </div>
           </div>
-          <ConversationPanel
-            className="flex-1 overflow-y-auto p-6"
-            messages={messages}
-            isTyping={isTyping}
-          />
-          <MessageComposer onSend={handleSend} />
+          <div ref={scrollRef} className="flex-1 overflow-y-auto p-6">
+            <ConversationPanel
+              className="flex flex-col gap-4"
+              messages={messages}
+              isTyping={isThinking}
+            />
+          </div>
+          <MessageComposer />
         </div>
       )}
     </div>

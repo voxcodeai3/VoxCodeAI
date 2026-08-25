@@ -1,8 +1,8 @@
 import { useEffect, useRef } from 'react';
 import { speechEnvelope } from './audioSim';
 
-const AMP = { idle: 0.32, listening: 1.0, thinking: 0.5, speaking: 1.0 };
-const SPD = { idle: 0.5, listening: 1.25, thinking: 1.6, speaking: 1.15 };
+const AMP = { idle: 0.32, listening: 1.0, transcribing: 0.95, thinking: 0.5, speaking: 1.0, error: 0.2 };
+const SPD = { idle: 0.5, listening: 1.25, transcribing: 1.2, thinking: 1.6, speaking: 1.15, error: 0.35 };
 
 export default function HorizontalWaveform({ state = 'idle', frequencyData = null, className = '' }) {
   const wrapRef = useRef(null);
@@ -26,8 +26,8 @@ export default function HorizontalWaveform({ state = 'idle', frequencyData = nul
     const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const motion = reduceMotion ? 0.2 : 1;
 
-    let ampCur = AMP[live.current.state];
-    let spdCur = SPD[live.current.state];
+    let ampCur = AMP[live.current.state] || AMP.idle;
+    let spdCur = SPD[live.current.state] || SPD.idle;
     let t = Math.random() * 50;
     let ts = Math.random() * 40;
     let last = performance.now();

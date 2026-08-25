@@ -1,5 +1,7 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext'
+import { VoiceProvider } from './context/VoiceContext'
+import { AIProvider } from './context/AIContext'
 import Signup from './pages/Signup'
 import Login from './pages/Login'
 import VoxCode from './pages/VoxCode'
@@ -30,7 +32,9 @@ function App() {
   return (
     <AuthProvider>
       <BrowserRouter>
-        <Routes>
+        <VoiceProvider>
+          <AIProvider>
+            <Routes>
           <Route
             path="/signup"
             element={
@@ -57,7 +61,9 @@ function App() {
           />
           <Route path="/oauth/callback" element={<OAuthCallback />} />
           <Route path="*" element={<HomeRedirect />} />
-        </Routes>
+            </Routes>
+          </AIProvider>
+        </VoiceProvider>
       </BrowserRouter>
     </AuthProvider>
   )

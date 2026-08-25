@@ -3,6 +3,7 @@ const express = require("express");
 const cors = require("cors");
 const mongoose = require("mongoose");
 const authRoutes = require("./routes/authRoutes");
+const aiRoutes = require("./routes/aiRoutes");
 
 const app = express();
 
@@ -14,6 +15,9 @@ app.get("/api/test", (req, res) => {
 });
 
 app.use("/api/auth", authRoutes);
+
+// AI tutor routes (JWT protected)
+app.use("/api/ai", aiRoutes);
 
 app.use((err, req, res, next) => {
   console.error("Unhandled error:", err);
