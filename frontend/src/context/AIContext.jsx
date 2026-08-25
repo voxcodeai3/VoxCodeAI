@@ -103,6 +103,7 @@ export function AIProvider({ children }) {
     teachingMode: 'learn',
   });
   const [activeAction, setActiveAction] = useState(null);
+  const [responseMode, setResponseMode] = useState(null);
 
   const convIdRef = useRef(null);
   convIdRef.current = currentConversationId;
@@ -176,6 +177,7 @@ export function AIProvider({ children }) {
         if (data?.conversationId) setCurrentConversationId(data.conversationId);
 
         const finalMode = applyPreference(data.responseMode, preference);
+        setResponseMode(finalMode);
         const aiMessage = {
           id: uid('ai'),
           type: 'ai',
@@ -275,6 +277,7 @@ export function AIProvider({ children }) {
       /* clear locally regardless */
     }
     voice.stopSpeaking();
+    setResponseMode(null);
     setCurrentConversationId(null);
     setHasFailedAttempt(false);
     setActiveAction(null);
@@ -301,6 +304,7 @@ export function AIProvider({ children }) {
       isThinking,
       currentConversationId,
       hasFailedAttempt,
+      responseMode,
       preference,
       setPreference,
       settings,
@@ -316,6 +320,7 @@ export function AIProvider({ children }) {
       isThinking,
       currentConversationId,
       hasFailedAttempt,
+      responseMode,
       preference,
       setPreference,
       settings,

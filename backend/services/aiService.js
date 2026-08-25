@@ -5,16 +5,33 @@
  * AI vendor directly. The active provider is selected from environment
  * variables (all credentials live in backend/.env, never in the frontend):
  *
- *   1. GEMINI_API_KEY                        → Google Generative Language API
- *   2. OPENROUTER_API_KEY                    → OpenRouter (OpenAI-compatible)
- *   3. AI_API_KEY + AI_BASE_URL (+AI_MODEL)  → any OpenAI-compatible endpoint
+ *   AI_PROVIDER  – one of: gemini | openai | openrouter | compatible | (empty)
+ *   AI_API_KEY   – API key for the selected provider
+ *   AI_BASE_URL  – optional base URL for OpenAI-compatible endpoints
+ *   AI_MODEL     – optional model override for the selected provider
  *
- * Optional: AI_MODEL overrides the default model for the chosen provider.
+ * When AI_PROVIDER is "gemini" the service calls the Google Generative
+ * Language API directly (no SDK required).  For every other value it calls
+ * an OpenAI-compatible /chat/completions endpoint — this covers OpenAI,
+ * OpenRouter, DeepSeek, Groq, Ollama, and any other compatible backend.
+ *
+ * The developer manually fills in the real .env values.
+ * No provider SDK is installed until the provider is specified.
  */
 
-const GEMINI_DEFAULT_MODEL = "gemini-2.0-flash";
-const OPENROUTER_DEFAULT_MODEL = "openai/gpt-4o-mini";
-const COMPATIBLE_DEFAULT_MODEL = "gpt-4o-mini";
+const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta";
+
+const DEFAULT_MODELS = {
+  gemini: "gemini-2.0-flash",
+  openai: "gpt-4o-mini",
+  openrouter: "openai/gpt-4o-mini",
+  compatible: "gpt-4o-mini",
+};
+
+const DEFAULT_BASE_URLS = {
+  openai: "https://api.openai.com/v1",
+  openrouter: "https://openrouter.ai/api/v1",
+};
 
 const MAX_HISTORY_MESSAGES = 12;
 const REQUEST_TIMEOUT_MS = 45000;
@@ -54,12 +71,19 @@ Answer STRICTLY as minified JSON on a single line, with no markdown fences and n
 {"reply":"<your explanation to the student>","code":<null or "<code string>">,"response_mode":"<text|voice|text_voice>"}`;
 }
 
+/* ── Provider detection ─────────────────────────────────────────────────── */
+
 function activeProvider() {
-  if (process.env.GEMINI_API_KEY) return "gemini";
-  if (process.env.OPENROUTER_API_KEY) return "openrouter";
-  if (process.env.AI_API_KEY && process.env.AI_BASE_URL) return "compatible";
+  const p = (process.env.AI_PROVIDER || "").trim().toLowerCase();
+  if (p === "gemini") return "gemini";
+  if (p === "openai") return "openai";
+  if (p === "openrouter") return "openrouter";
+  if (p === "compatible") return "compatible";
+  if (process.env.AI_API_KEY) return "compatible";
   return null;
 }
+
+/* ── Response parsing ───────────────────────────────────────────────────── */
 
 function extractJson(raw) {
   if (!raw) throw new Error("Empty AI response");
@@ -68,7 +92,6 @@ function extractJson(raw) {
   const start = text.indexOf("{");
   const end = text.lastIndexOf("}");
   if (start === -1 || end === -1 || end <= start) {
-    // Model ignored the JSON contract — treat the whole reply as plain text.
     return { reply: text, code: null, response_mode: null };
   }
   try {
@@ -87,6 +110,8 @@ function heuristicModality(reply, code) {
   return "text";
 }
 
+/* ── HTTP helper ────────────────────────────────────────────────────────── */
+
 async function fetchWithTimeout(url, options) {
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
@@ -97,10 +122,12 @@ async function fetchWithTimeout(url, options) {
   }
 }
 
+/* ── Gemini (direct REST, no SDK) ───────────────────────────────────────── */
+
 async function callGemini({ systemPrompt, history, message }) {
-  const model = process.env.AI_MODEL || GEMINI_DEFAULT_MODEL;
-  const apiKey = process.env.GEMINI_API_KEY;
-  const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
+  const model = process.env.AI_MODEL || DEFAULT_MODELS.gemini;
+  const apiKey = process.env.AI_API_KEY;
+  const url = `${GEMINI_API_URL}/models/${model}:generateContent?key=${encodeURIComponent(apiKey)}`;
 
   const contents = [
     ...history.map((m) => ({
@@ -134,6 +161,8 @@ async function callGemini({ systemPrompt, history, message }) {
   return parts.map((p) => p.text || "").join("");
 }
 
+/* ── OpenAI-compatible (works for openai, openrouter, compatible) ──────── */
+
 async function callOpenAICompatible({ baseUrl, apiKey, systemPrompt, history, message, extraHeaders = {} }) {
   const res = await fetchWithTimeout(`${baseUrl.replace(/\/$/, "")}/chat/completions`, {
     method: "POST",
@@ -143,7 +172,7 @@ async function callOpenAICompatible({ baseUrl, apiKey, systemPrompt, history, me
       ...extraHeaders,
     },
     body: JSON.stringify({
-      model: process.env.AI_MODEL || COMPATIBLE_DEFAULT_MODEL,
+      model: process.env.AI_MODEL || DEFAULT_MODELS.compatible,
       temperature: 0.7,
       max_tokens: 1600,
       messages: [
@@ -166,6 +195,8 @@ async function callOpenAICompatible({ baseUrl, apiKey, systemPrompt, history, me
   return data?.choices?.[0]?.message?.content || "";
 }
 
+/* ── Public interface ───────────────────────────────────────────────────── */
+
 /**
  * Generate a tutor response.
  * @returns {{ reply: string, code: string|null, responseMode: 'text'|'voice'|'text_voice' }}
@@ -184,28 +215,46 @@ async function generateResponse({
     throw err;
   }
 
+  const apiKey = process.env.AI_API_KEY;
+  if (!apiKey) {
+    const err = new Error("AI_NOT_CONFIGURED");
+    err.code = "AI_NOT_CONFIGURED";
+    throw err;
+  }
+
   const systemPrompt = buildSystemPrompt({ language, level, teachingMode });
   const trimmedHistory = history.slice(-MAX_HISTORY_MESSAGES);
 
   let raw;
+
   if (provider === "gemini") {
     raw = await callGemini({ systemPrompt, history: trimmedHistory, message });
-  } else if (provider === "openrouter") {
-    raw = await callOpenAICompatible({
-      baseUrl: process.env.AI_BASE_URL || "https://openrouter.ai/api/v1",
-      apiKey: process.env.OPENROUTER_API_KEY,
-      systemPrompt,
-      history: trimmedHistory,
-      message,
-      extraHeaders: { "HTTP-Referer": process.env.FRONTEND_URL || "http://localhost:5173" },
-    });
   } else {
+    let baseUrl;
+    const extraHeaders = {};
+
+    if (provider === "openrouter") {
+      baseUrl = process.env.AI_BASE_URL || DEFAULT_BASE_URLS.openrouter;
+      extraHeaders["HTTP-Referer"] = process.env.FRONTEND_URL || "http://localhost:5173";
+    } else if (provider === "openai") {
+      baseUrl = process.env.AI_BASE_URL || DEFAULT_BASE_URLS.openai;
+    } else {
+      // "compatible" — requires AI_BASE_URL
+      if (!process.env.AI_BASE_URL) {
+        const err = new Error("AI_BASE_URL is required for the 'compatible' provider.");
+        err.code = "AI_NOT_CONFIGURED";
+        throw err;
+      }
+      baseUrl = process.env.AI_BASE_URL;
+    }
+
     raw = await callOpenAICompatible({
-      baseUrl: process.env.AI_BASE_URL,
-      apiKey: process.env.AI_API_KEY,
+      baseUrl,
+      apiKey,
       systemPrompt,
       history: trimmedHistory,
       message,
+      extraHeaders,
     });
   }
 
