@@ -109,25 +109,47 @@ export function InterviewProvider({ children }) {
   const generateQuestion = useCallback(async () => {
     if (!session) return null;
     setGenerating(true);
-    setInterviewState('asking');
+    setInterviewState('starting');
     try {
       const { data } = await api.post(`/interviews/${session.id}/question`);
-      setSession(data.session);
+      if (data.session) {
+        setSession(data.session);
+      }
       setInterviewState('asking');
       return data;
     } catch (err) {
-      setInterviewState('error');
-      setError(err?.response?.data?.message || 'Failed to generate question.');
+      console.error('generateQuestion failed:', err);
+      // Don't get stuck in error state — stay in asking so the user can retry.
+      setInterviewState('asking');
+      setError(err?.response?.data?.message || 'Failed to generate question. You can retry.');
       return null;
     } finally { setGenerating(false); }
   }, [session]);
 
   const submitAnswer = useCallback(async (answer, inputMode = 'text') => {
-    if (!session) return null;
+    if (!session) { console.log('[InterviewCtx] No session, aborting'); return null; }
+    console.log('[InterviewCtx] submitAnswer called, session.id:', session.id);
+
+    // Optimistic update: add the candidate's answer to transcript immediately.
+    const optimisticSession = {
+      ...session,
+      transcript: [
+        ...session.transcript,
+        { role: 'candidate', content: answer, inputMode, at: new Date().toISOString() },
+      ],
+    };
+    setSession(optimisticSession);
     setInterviewState('evaluating');
+
     try {
+      console.log('[InterviewCtx] Calling API...');
       const { data } = await api.post(`/interviews/${session.id}/answer`, { answer, inputMode });
-      setSession(data.session);
+      console.log('[InterviewCtx] API response received, nextAction:', data.nextAction);
+      if (data.session) {
+        setSession(data.session);
+      } else {
+        console.warn('[InterviewCtx] No session in response');
+      }
 
       if (data.nextAction === 'follow_up') {
         setInterviewState('follow_up');
@@ -137,8 +159,11 @@ export function InterviewProvider({ children }) {
 
       return data;
     } catch (err) {
-      setInterviewState('error');
-      setError(err?.response?.data?.message || 'Failed to submit answer.');
+      console.error('[InterviewCtx] submitAnswer failed:', err?.response?.data || err.message);
+      // Restore session — remove the optimistic entry if backend failed.
+      setSession(session);
+      setInterviewState('asking');
+      setError(err?.response?.data?.message || 'Failed to submit answer. Please try again.');
       return null;
     }
   }, [session]);
@@ -192,6 +217,20 @@ export function InterviewProvider({ children }) {
     }
   }, [session, startTimer]);
 
+  /** Load a completed interview from history to view its results. */
+  const viewInterview = useCallback(async (interviewId) => {
+    try {
+      const { data } = await api.get(`/interviews/${interviewId}`);
+      if (data.session) {
+        setSession(data.session);
+        setShowResults(true);
+        setInterviewState('completed');
+      }
+    } catch (err) {
+      console.error('Failed to load interview:', err);
+    }
+  }, []);
+
   const clearInterview = useCallback(() => {
     stopTimer();
     setSession(null);
@@ -208,12 +247,12 @@ export function InterviewProvider({ children }) {
     showResults, setShowResults, showConfig, setShowConfig,
     timeRemaining,
     createSession, generateQuestion, submitAnswer,
-    completeInterview, pauseInterview, resumeInterview, clearInterview,
+    completeInterview, pauseInterview, resumeInterview, viewInterview, clearInterview,
   }), [
     session, interviewState, loading, generating, error,
     showResults, showConfig, timeRemaining,
     createSession, generateQuestion, submitAnswer,
-    completeInterview, pauseInterview, resumeInterview, clearInterview,
+    completeInterview, pauseInterview, resumeInterview, viewInterview, clearInterview,
   ]);
 
   return (

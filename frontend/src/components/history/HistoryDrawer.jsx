@@ -43,7 +43,7 @@ function DeleteModal({ title, onConfirm, onCancel }) {
   );
 }
 
-function HistoryDrawer({ isOpen, onClose, onSelectConversation }) {
+function HistoryDrawer({ isOpen, onClose, onSelectConversation, onSelectInterview }) {
   const {
     conversations,
     activeConversationId,
@@ -206,7 +206,7 @@ function HistoryDrawer({ isOpen, onClose, onSelectConversation }) {
                   <button
                     key={interview.id}
                     type="button"
-                    onClick={onClose}
+                    onClick={() => { onSelectInterview(interview); onClose(); }}
                     className="w-full flex items-center gap-3 rounded-xl border border-white/[0.04] bg-white/[0.02] px-3 py-2.5 text-left transition-all hover:bg-white/[0.04] hover:border-white/[0.08]"
                   >
                     <div className="h-8 w-8 rounded-full border border-cyan-400/10 bg-cyan-400/[0.04] flex items-center justify-center shrink-0">

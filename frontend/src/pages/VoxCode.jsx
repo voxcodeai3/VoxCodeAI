@@ -86,7 +86,7 @@ export default function VoxCode() {
     stopListening,
   } = useVoice();
   const { activeAction, triggerQuickAction } = useAI();
-  const { interviewState } = useInterview();
+  const { interviewState, viewInterview } = useInterview();
 
   const isInInterview = interviewState && interviewState !== 'idle';
   const baseMap = isInInterview ? INTERVIEW_STATUS_MAP : STATUS_MAP;
@@ -344,6 +344,7 @@ export default function VoxCode() {
         isOpen={isHistoryOpen}
         onClose={() => setIsHistoryOpen(false)}
         onSelectConversation={() => {}}
+        onSelectInterview={(interview) => viewInterview(interview.id)}
       />
     </div>
   );
