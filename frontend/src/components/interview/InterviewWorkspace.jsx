@@ -228,7 +228,7 @@ function ActiveInterview() {
     session, interviewState, setInterviewState,
     generating, submitAnswer: submitAnswerCtx,
     completeInterview, pauseInterview, resumeInterview,
-    timeRemaining,
+    timeRemaining, error, setError,
   } = useInterview();
   const { isListening, startListening, stopListening, speakResponse, support } = useVoice();
 
@@ -246,11 +246,17 @@ function ActiveInterview() {
   const handleSubmit = useCallback(async () => {
     const text = answer.trim();
     if (!text || submitting) return;
+    console.log('[Interview] Submitting answer:', text);
     setSubmitting(true);
-    try {
-      await submitAnswerCtx(text, 'text');
+    const result = await submitAnswerCtx(text, 'text');
+    console.log('[Interview] Submit result:', result ? 'success' : 'failed');
+    if (result) {
       setAnswer('');
-    } finally { setSubmitting(false); }
+      console.log('[Interview] Answer cleared after success');
+    } else {
+      console.log('[Interview] Answer preserved after failure');
+    }
+    setSubmitting(false);
   }, [answer, submitting, submitAnswerCtx]);
 
   const handleKeyDown = useCallback((e) => {
@@ -322,7 +328,7 @@ function ActiveInterview() {
       <Transcript transcript={session?.transcript} />
 
       {/* Idle state — generate first question */}
-      {isIdle && !currentQ && (
+      {isIdle && !currentQ && !generating && (
         <div className="text-center py-4">
           <button
             type="button"
@@ -343,14 +349,32 @@ function ActiveInterview() {
         </div>
       )}
 
-      {/* Answer input */}
-      {!isPaused && !isIdle && !isEvaluating && (
+      {/* Error retry button */}
+      {error && !isEvaluating && (
+        <div className="text-center">
+          <button
+            type="button"
+            onClick={() => {
+              setError(null);
+              if (!currentQ) {
+                setInterviewState('starting');
+              }
+            }}
+            className="text-[10px] text-cyan-400/60 hover:text-cyan-400 transition-colors underline"
+          >
+            Retry
+          </button>
+        </div>
+      )}
+
+      {/* Answer input — always show when there's a session and not paused/completed */}
+      {!isPaused && interviewState !== 'completed' && session && (
         <div className="space-y-2">
           <div className="flex gap-2">
             <textarea
               ref={inputRef}
               value={answer}
-              onChange={(e) => setAnswer(e.target.value)}
+              onChange={(e) => { setAnswer(e.target.value); if (error) setError(null); }}
               onKeyDown={handleKeyDown}
               placeholder="Type your answer..."
               rows={2}
@@ -448,7 +472,7 @@ export default function InterviewWorkspace({ isOpen, onClose }) {
     onClose();
   }, [clearInterview, onClose]);
 
-  if (!isOpen) return null;
+  if (!isOpen && !showResults) return null;
 
   const typeConfig = INTERVIEW_TYPES.find((t) => t.id === session?.type) || INTERVIEW_TYPES[0];
 

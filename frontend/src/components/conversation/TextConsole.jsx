@@ -18,9 +18,14 @@ function TextConsole({ expanded = false }) {
   const { messages, isThinking, clearConversation, loadConversationMessages } = useAI();
   const { activeConversationId } = useConversations();
   const { session: activeSession } = useLearning();
-  const { session: activeInterview } = useInterview();
+  const { session: activeInterview, showResults: interviewShowResults } = useInterview();
   const scrollRef = useRef(null);
   const wasExpandedRef = useRef(isExpanded);
+
+  // Auto-open interview workspace when viewing results from history.
+  useEffect(() => {
+    if (interviewShowResults) setIsInterviewOpen(true);
+  }, [interviewShowResults]);
 
   useEffect(() => {
     if (!isExpanded) return undefined;
