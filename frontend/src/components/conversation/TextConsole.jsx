@@ -7,6 +7,7 @@ import { useConversations } from '../../context/ConversationContext';
 import LearnerProfilePanel from '../learner/LearnerProfilePanel';
 import LearningWorkspace from '../learning/LearningWorkspace';
 import InterviewWorkspace from '../interview/InterviewWorkspace';
+import CodePractice from '../practice/CodePractice';
 import { useLearning } from '../../context/LearningContext';
 import { useInterview } from '../../context/InterviewContext';
 
@@ -15,7 +16,8 @@ function TextConsole({ expanded = false }) {
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isLearningOpen, setIsLearningOpen] = useState(false);
   const [isInterviewOpen, setIsInterviewOpen] = useState(false);
-  const { messages, isThinking, clearConversation, loadConversationMessages } = useAI();
+  const [isPracticeOpen, setIsPracticeOpen] = useState(false);
+  const { messages, isThinking, clearConversation, loadConversationMessages, openPractice, clearOpenPractice } = useAI();
   const { activeConversationId } = useConversations();
   const { session: activeSession } = useLearning();
   const { session: activeInterview, showResults: interviewShowResults } = useInterview();
@@ -26,6 +28,14 @@ function TextConsole({ expanded = false }) {
   useEffect(() => {
     if (interviewShowResults) setIsInterviewOpen(true);
   }, [interviewShowResults]);
+
+  // Auto-open CodePractice when quick action triggers it.
+  useEffect(() => {
+    if (openPractice) {
+      setIsPracticeOpen(true);
+      clearOpenPractice();
+    }
+  }, [openPractice, clearOpenPractice]);
 
   useEffect(() => {
     if (!isExpanded) return undefined;
@@ -40,6 +50,14 @@ function TextConsole({ expanded = false }) {
     }
     wasExpandedRef.current = isExpanded;
   }, [isExpanded]);
+
+  const handlePracticeClick = () => {
+    if (activeSession) {
+      setIsLearningOpen(true);
+    } else {
+      setIsPracticeOpen(true);
+    }
+  };
 
   return (
     <div className="fixed bottom-4 right-4 z-50">
@@ -87,7 +105,7 @@ function TextConsole({ expanded = false }) {
               </button>
               <button
                 type="button"
-                onClick={() => setIsLearningOpen(true)}
+                onClick={handlePracticeClick}
                 aria-label="Open practice"
                 className="rounded-lg p-1.5 text-cyan-400/60 hover:text-cyan-400 transition-colors"
               >
@@ -142,6 +160,10 @@ function TextConsole({ expanded = false }) {
       <LearningWorkspace
         isOpen={isLearningOpen}
         onClose={() => setIsLearningOpen(false)}
+      />
+      <CodePractice
+        isOpen={isPracticeOpen}
+        onClose={() => setIsPracticeOpen(false)}
       />
       <InterviewWorkspace
         isOpen={isInterviewOpen}

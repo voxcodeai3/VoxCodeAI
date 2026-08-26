@@ -127,8 +127,7 @@ export function InterviewProvider({ children }) {
   }, [session]);
 
   const submitAnswer = useCallback(async (answer, inputMode = 'text') => {
-    if (!session) { console.log('[InterviewCtx] No session, aborting'); return null; }
-    console.log('[InterviewCtx] submitAnswer called, session.id:', session.id);
+    if (!session) return null;
 
     // Optimistic update: add the candidate's answer to transcript immediately.
     const optimisticSession = {
@@ -142,13 +141,9 @@ export function InterviewProvider({ children }) {
     setInterviewState('evaluating');
 
     try {
-      console.log('[InterviewCtx] Calling API...');
       const { data } = await api.post(`/interviews/${session.id}/answer`, { answer, inputMode });
-      console.log('[InterviewCtx] API response received, nextAction:', data.nextAction);
       if (data.session) {
         setSession(data.session);
-      } else {
-        console.warn('[InterviewCtx] No session in response');
       }
 
       if (data.nextAction === 'follow_up') {

@@ -246,15 +246,10 @@ function ActiveInterview() {
   const handleSubmit = useCallback(async () => {
     const text = answer.trim();
     if (!text || submitting) return;
-    console.log('[Interview] Submitting answer:', text);
     setSubmitting(true);
     const result = await submitAnswerCtx(text, 'text');
-    console.log('[Interview] Submit result:', result ? 'success' : 'failed');
     if (result) {
       setAnswer('');
-      console.log('[Interview] Answer cleared after success');
-    } else {
-      console.log('[Interview] Answer preserved after failure');
     }
     setSubmitting(false);
   }, [answer, submitting, submitAnswerCtx]);

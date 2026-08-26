@@ -1,7 +1,7 @@
 const mongoose = require("mongoose");
 const Conversation = require("../models/Conversation");
 const LearnerProfile = require("../models/LearnerProfile");
-const { generateResponse } = require("../services/aiService");
+const { generateResponse, generateQuestion, evaluateAnswer } = require("../services/aiService");
 const { modelManager } = require("../services/modelManager");
 const {
   extractSignals,
@@ -30,6 +30,7 @@ async function chat(req, res) {
       level = "beginner",
       teachingMode = "learn",
       codingContext,
+      practiceMode,
     } = req.body || {};
 
     if (typeof message !== "string" || !message.trim()) {
@@ -68,6 +69,54 @@ async function chat(req, res) {
     // Load learner profile and build context for personalized responses.
     const learnerProfile = await LearnerProfile.findOrCreate(userId);
     const learnerContext = buildLearnerContext(learnerProfile);
+
+    // Practice mode: generate question or evaluate code via dedicated functions.
+    if (practiceMode === "generate") {
+      try {
+        const topic = codingContext?.topic || message;
+        const difficulty = codingContext?.difficulty || "medium";
+        const qType = codingContext?.type || "coding";
+        const question = await generateQuestion({ topic, language, difficulty, learnerContext, type: qType });
+        return res.json({
+          message: question.question || question,
+          code: null,
+          responseMode: "text",
+          conversationId: conversation?._id || null,
+          language,
+          practice: { action: "question", question },
+        });
+      } catch (err) {
+        console.error("Practice generate error:", err.message);
+        return res.status(502).json({ message: "Failed to generate question. Please try again." });
+      }
+    }
+
+    if (practiceMode === "evaluate") {
+      try {
+        const questionText = codingContext?.question || "";
+        const studentCode = codingContext?.code || message;
+        const expectedConcepts = codingContext?.expectedConcepts || [];
+        const evaluation = await evaluateAnswer({
+          question: questionText,
+          expectedAnswer: codingContext?.expectedAnswer || "",
+          expectedConcepts,
+          studentAnswer: studentCode,
+          difficulty: codingContext?.difficulty || "medium",
+          learnerContext,
+        });
+        return res.json({
+          message: evaluation.feedback || "Evaluation complete.",
+          code: null,
+          responseMode: "text",
+          conversationId: conversation?._id || null,
+          language,
+          practice: { action: "evaluation", evaluation },
+        });
+      } catch (err) {
+        console.error("Practice evaluate error:", err.message);
+        return res.status(502).json({ message: "Failed to evaluate answer. Please try again." });
+      }
+    }
 
     // Extract learning signals from the user's message and update profile.
     const signals = extractSignals(message);

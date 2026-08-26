@@ -124,6 +124,8 @@ export function AIProvider({ children }) {
   });
   const [activeAction, setActiveAction] = useState(null);
   const [responseMode, setResponseMode] = useState(null);
+  const [practiceState, setPracticeState] = useState(null); // { question, feedback, score, evaluation }
+  const [openPractice, setOpenPractice] = useState(false); // signal to open CodePractice
 
   const isThinkingRef = useRef(false);
   isThinkingRef.current = isThinking;
@@ -278,6 +280,43 @@ export function AIProvider({ children }) {
     [runChat, voice],
   );
 
+  /** Send a practice message (generate question or evaluate code) without adding to chat. */
+  const sendPracticeMessage = useCallback(
+    async (message, practiceMode, codingContext = {}) => {
+      setIsThinking(true);
+      try {
+        const { data } = await api.post('/ai/chat', {
+          message,
+          practiceMode,
+          conversationId: activeConversationId || undefined,
+          language: settings.language,
+          level: settings.level,
+          teachingMode: 'practice',
+          codingContext,
+        });
+        setIsThinking(false);
+        if (data.practice?.action === 'question') {
+          setPracticeState({ type: 'question', question: data.practice.question, feedback: null, score: null });
+        } else if (data.practice?.action === 'evaluation') {
+          setPracticeState((prev) => ({
+            ...prev,
+            type: 'evaluation',
+            feedback: data.practice.evaluation,
+            score: data.practice.evaluation.score,
+          }));
+        }
+        return data;
+      } catch (err) {
+        setIsThinking(false);
+        console.error('Practice message failed:', err);
+        return null;
+      }
+    },
+    [activeConversationId, settings],
+  );
+
+  const clearPractice = useCallback(() => setPracticeState(null), []);
+
   const sendRef = useRef(sendMessage);
   sendRef.current = sendMessage;
 
@@ -331,10 +370,17 @@ export function AIProvider({ children }) {
       if (!config) return;
       setActiveAction(actionId);
       setSettings((s) => ({ ...s, teachingMode: config.teachingMode }));
+      // Practice and quiz open CodePractice instead of sending a chat message.
+      if (actionId === 'practice' || actionId === 'quiz') {
+        setOpenPractice(true);
+        return;
+      }
       sendMessage(config.prompt, 'text', { teachingMode: config.teachingMode });
     },
     [sendMessage],
   );
+
+  const clearOpenPractice = useCallback(() => setOpenPractice(false), []);
 
   // Load a specific conversation from history (called from TextConsole after ConversationContext loads it).
   const loadConversationMessages = useCallback(
@@ -358,6 +404,11 @@ export function AIProvider({ children }) {
       setSettings,
       activeAction,
       sendMessage,
+      sendPracticeMessage,
+      practiceState,
+      clearPractice,
+      openPractice,
+      clearOpenPractice,
       retryLast,
       clearConversation,
       deleteAllConversations,
@@ -375,6 +426,11 @@ export function AIProvider({ children }) {
       settings,
       activeAction,
       sendMessage,
+      sendPracticeMessage,
+      practiceState,
+      clearPractice,
+      openPractice,
+      clearOpenPractice,
       retryLast,
       clearConversation,
       deleteAllConversations,
