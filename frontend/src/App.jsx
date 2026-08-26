@@ -5,6 +5,7 @@ import { ConversationProvider } from './context/ConversationContext'
 import { LearnerProfileProvider } from './context/LearnerProfileContext'
 import { CodingWorkspaceProvider } from './context/CodingWorkspaceContext'
 import { LearningProvider } from './context/LearningContext'
+import { InterviewProvider } from './context/InterviewContext'
 import { AIProvider } from './context/AIContext'
 import Signup from './pages/Signup'
 import Login from './pages/Login'
@@ -42,6 +43,7 @@ function App() {
               <CodingWorkspaceProvider>
               <LearningProvider>
                 <AIProvider>
+                  <InterviewProvider>
               <Routes>
           <Route
             path="/signup"
@@ -69,7 +71,8 @@ function App() {
           />
           <Route path="/oauth/callback" element={<OAuthCallback />} />
           <Route path="*" element={<HomeRedirect />} />
-            </Routes>
+              </Routes>
+                  </InterviewProvider>
                 </AIProvider>
               </LearningProvider>
               </CodingWorkspaceProvider>

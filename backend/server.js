@@ -7,6 +7,7 @@ const aiRoutes = require("./routes/aiRoutes");
 const conversationRoutes = require("./routes/conversationRoutes");
 const learnerRoutes = require("./routes/learnerRoutes");
 const learningRoutes = require("./routes/learningRoutes");
+const interviewRoutes = require("./routes/interviewRoutes");
 
 const app = express();
 
@@ -30,6 +31,9 @@ app.use("/api/learner", learnerRoutes);
 
 // Learning session routes (JWT protected)
 app.use("/api/learning", learningRoutes);
+
+// Interview session routes (JWT protected)
+app.use("/api/interviews", interviewRoutes);
 
 app.use((err, req, res, next) => {
   console.error("Unhandled error:", err);

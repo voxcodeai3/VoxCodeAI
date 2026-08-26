@@ -1,7 +1,8 @@
 import { useEffect, useMemo, useState } from 'react';
-import { X, Plus, Loader2, MessageSquareDashed } from 'lucide-react';
+import { X, Plus, Loader2, MessageSquareDashed, Mic, Trophy } from 'lucide-react';
 import { useConversations } from '../../context/ConversationContext';
 import ConversationItem from './ConversationItem';
+import api from '../../services/api';
 
 function DeleteModal({ title, onConfirm, onCancel }) {
   return (
@@ -53,6 +54,17 @@ function HistoryDrawer({ isOpen, onClose, onSelectConversation }) {
   } = useConversations();
 
   const [pendingDelete, setPendingDelete] = useState(null);
+  const [interviews, setInterviews] = useState([]);
+  const [loadingInterviews, setLoadingInterviews] = useState(false);
+
+  // Load interview history.
+  useEffect(() => {
+    if (!isOpen) return;
+    setLoadingInterviews(true);
+    api.get('/interviews').then(({ data }) => {
+      setInterviews(data.sessions || []);
+    }).catch(() => {}).finally(() => setLoadingInterviews(false));
+  }, [isOpen]);
 
   // Close on Escape.
   useEffect(() => {
@@ -97,7 +109,7 @@ function HistoryDrawer({ isOpen, onClose, onSelectConversation }) {
     setPendingDelete(null);
   };
 
-  const isEmpty = !loadingConversations && conversations.length === 0;
+  const isEmpty = !loadingConversations && conversations.length === 0 && interviews.length === 0;
 
   if (!isOpen) return null;
 
@@ -181,6 +193,43 @@ function HistoryDrawer({ isOpen, onClose, onSelectConversation }) {
                 </div>
               )
             )}
+
+          {/* Interview History */}
+          {interviews.length > 0 && (
+            <div className="mb-4 mt-2">
+              <p className="text-[10px] font-medium uppercase tracking-widest text-cyan-400/25 mb-2 px-1">
+                Interviews
+              </p>
+              <div className="border-t border-cyan-400/5 mb-2" />
+              <div className="space-y-1">
+                {interviews.slice(0, 10).map((interview) => (
+                  <button
+                    key={interview.id}
+                    type="button"
+                    onClick={onClose}
+                    className="w-full flex items-center gap-3 rounded-xl border border-white/[0.04] bg-white/[0.02] px-3 py-2.5 text-left transition-all hover:bg-white/[0.04] hover:border-white/[0.08]"
+                  >
+                    <div className="h-8 w-8 rounded-full border border-cyan-400/10 bg-cyan-400/[0.04] flex items-center justify-center shrink-0">
+                      <Mic className="h-3.5 w-3.5 text-cyan-400/40" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs text-white/60 truncate">
+                        {interview.type} Interview
+                        {interview.language ? ` · ${interview.language}` : ''}
+                      </p>
+                      <p className="text-[9px] text-white/25 mt-0.5">
+                        {interview.status === 'completed' ? 'Completed' : interview.status}
+                        {interview.score > 0 && ` · ${interview.score}/100`}
+                      </p>
+                    </div>
+                    {interview.status === 'completed' && (
+                      <Trophy className="h-3 w-3 text-amber-400/40 shrink-0" />
+                    )}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

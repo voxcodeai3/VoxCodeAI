@@ -117,9 +117,10 @@ class ModelManager {
       if (m.sleepUntil && m.sleepUntil > now) {
         m.status = "SLEEPING";
       } else if (m.sleepUntil && m.sleepUntil <= now) {
-        // Wake time already passed on restart — mark for health check.
-        m.status = "SLEEPING";
-        m.sleepUntil = now; // trigger immediate check
+        // Wake time already passed on restart — wake immediately.
+        m.sleepUntil = null;
+        m.sleepStartedAt = null;
+        m.status = "AVAILABLE";
       }
     }
 
@@ -312,54 +313,38 @@ class ModelManager {
         continue;
       }
       if (m.sleepUntil <= now) {
-        // Don't set AVAILABLE yet — schedule a health check.
-        // The select() method will skip SLEEPING models, and the
-        // health check will be triggered by aiService after failover.
-        m.sleepUntil = now; // flag for health check
+        // Sleep period expired — wake the model back to active pool.
+        m.sleepUntil = null;
+        m.sleepStartedAt = null;
+        m.status = "AVAILABLE";
       }
     }
   }
 
   /** Lightweight probe — makes a minimal request to verify the model responds. */
   async _probe(m) {
-    const provider = (m.provider || "").toLowerCase();
     const timeout = 12000;
-
-    if (provider === "gemini") {
-      const model = m.name || "gemini-2.0-flash";
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${model}?key=${encodeURIComponent(m.apiKey)}`;
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), timeout);
-      try {
-        const res = await fetch(url, { signal: controller.signal });
-        if (!res.ok) throw Object.assign(new Error(`HTTP ${res.status}`), { status: res.status });
-      } finally {
-        clearTimeout(timer);
-      }
-    } else {
-      // OpenAI-compatible: try a tiny chat completion.
-      const baseUrl = m.baseUrl || "https://api.openai.com/v1";
-      const url = `${baseUrl.replace(/\/$/, "")}/chat/completions`;
-      const controller = new AbortController();
-      const timer = setTimeout(() => controller.abort(), timeout);
-      try {
-        const res = await fetch(url, {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${m.apiKey}`,
-          },
-          body: JSON.stringify({
-            model: m.name || "gpt-4o-mini",
-            messages: [{ role: "user", content: "Hi" }],
-            max_tokens: 5,
-          }),
-          signal: controller.signal,
-        });
-        if (!res.ok) throw Object.assign(new Error(`HTTP ${res.status}`), { status: res.status });
-      } finally {
-        clearTimeout(timer);
-      }
+    const baseUrl = m.baseUrl || "https://api.openai.com/v1";
+    const url = `${baseUrl.replace(/\/$/, "")}/chat/completions`;
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), timeout);
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${m.apiKey}`,
+        },
+        body: JSON.stringify({
+          model: m.name || "gpt-4o-mini",
+          messages: [{ role: "user", content: "Hi" }],
+          max_tokens: 5,
+        }),
+        signal: controller.signal,
+      });
+      if (!res.ok) throw Object.assign(new Error(`HTTP ${res.status}`), { status: res.status });
+    } finally {
+      clearTimeout(timer);
     }
   }
 

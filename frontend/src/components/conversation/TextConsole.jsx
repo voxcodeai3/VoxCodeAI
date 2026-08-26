@@ -1,20 +1,24 @@
 import { useEffect, useRef, useState } from 'react';
-import { Maximize, Minus, X, MessageCircle, Microchip, Trash2, User, BookOpen } from 'lucide-react';
+import { Maximize, Minus, X, MessageCircle, Microchip, Trash2, User, BookOpen, Mic } from 'lucide-react';
 import ConversationPanel from './ConversationPanel';
 import MessageComposer from './MessageComposer';
 import { useAI } from '../../context/AIContext';
 import { useConversations } from '../../context/ConversationContext';
 import LearnerProfilePanel from '../learner/LearnerProfilePanel';
 import LearningWorkspace from '../learning/LearningWorkspace';
+import InterviewWorkspace from '../interview/InterviewWorkspace';
 import { useLearning } from '../../context/LearningContext';
+import { useInterview } from '../../context/InterviewContext';
 
 function TextConsole({ expanded = false }) {
   const [isExpanded, setIsExpanded] = useState(expanded);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isLearningOpen, setIsLearningOpen] = useState(false);
+  const [isInterviewOpen, setIsInterviewOpen] = useState(false);
   const { messages, isThinking, clearConversation, loadConversationMessages } = useAI();
   const { activeConversationId } = useConversations();
   const { session: activeSession } = useLearning();
+  const { session: activeInterview } = useInterview();
   const scrollRef = useRef(null);
   const wasExpandedRef = useRef(isExpanded);
 
@@ -68,6 +72,14 @@ function TextConsole({ expanded = false }) {
               </div>
             </div>
             <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setIsInterviewOpen(true)}
+                aria-label="Open interview"
+                className="rounded-lg p-1.5 text-cyan-400/60 hover:text-cyan-400 transition-colors"
+              >
+                <Mic className="h-4 w-4" />
+              </button>
               <button
                 type="button"
                 onClick={() => setIsLearningOpen(true)}
@@ -125,6 +137,10 @@ function TextConsole({ expanded = false }) {
       <LearningWorkspace
         isOpen={isLearningOpen}
         onClose={() => setIsLearningOpen(false)}
+      />
+      <InterviewWorkspace
+        isOpen={isInterviewOpen}
+        onClose={() => setIsInterviewOpen(false)}
       />
     </div>
   );

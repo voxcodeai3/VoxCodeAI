@@ -11,6 +11,7 @@ import HistoryDrawer from '../components/history/HistoryDrawer';
 import { useAuth } from '../context/AuthContext';
 import { useVoice } from '../context/VoiceContext';
 import { useAI } from '../context/AIContext';
+import { useInterview } from '../context/InterviewContext';
 
 const STATUS_MAP = {
   idle:         { title: 'READY WHEN YOU ARE', subtitle: 'How can I help you today?', dots: false },
@@ -18,6 +19,19 @@ const STATUS_MAP = {
   transcribing: { title: "I'M LISTENING",      subtitle: '', dots: true },
   thinking:     { title: 'THINKING...',        subtitle: 'Processing your request...', dots: false },
   speaking:     { title: 'SPEAKING...',        subtitle: 'VoxCode is speaking...', dots: false },
+  error:        { title: 'HMM, TRY AGAIN',     subtitle: '', dots: false },
+};
+
+const INTERVIEW_STATUS_MAP = {
+  idle:         { title: 'READY WHEN YOU ARE', subtitle: 'Start an interview when ready.', dots: false },
+  starting:     { title: 'PREPARING...',       subtitle: 'Getting your interview ready...', dots: true },
+  asking:       { title: 'INTERVIEWER',        subtitle: 'Listening to the question...', dots: false },
+  listening:    { title: "I'M LISTENING",      subtitle: 'Listening for your answer...', dots: true },
+  evaluating:   { title: 'EVALUATING...',      subtitle: 'Analyzing your response...', dots: true },
+  follow_up:    { title: 'INTERVIEWER',        subtitle: 'Follow-up question...', dots: false },
+  coding:       { title: 'CODING CHALLENGE',   subtitle: 'Write your solution...', dots: false },
+  completed:    { title: 'INTERVIEW COMPLETE',  subtitle: 'Great effort!', dots: false },
+  paused:       { title: 'INTERVIEW PAUSED',   subtitle: 'Resume when ready.', dots: false },
   error:        { title: 'HMM, TRY AGAIN',     subtitle: '', dots: false },
 };
 
@@ -72,8 +86,13 @@ export default function VoxCode() {
     stopListening,
   } = useVoice();
   const { activeAction, triggerQuickAction } = useAI();
+  const { interviewState } = useInterview();
 
-  const stateConfig = STATUS_MAP[interactionState] || STATUS_MAP.idle;
+  const isInInterview = interviewState && interviewState !== 'idle';
+  const baseMap = isInInterview ? INTERVIEW_STATUS_MAP : STATUS_MAP;
+  const stateConfig = isInInterview
+    ? (INTERVIEW_STATUS_MAP[interviewState] || STATUS_MAP.idle)
+    : (STATUS_MAP[interactionState] || STATUS_MAP.idle);
 
   let subtitle = stateConfig.subtitle;
   if ((isListening || interactionState === 'transcribing') && transcript) {
