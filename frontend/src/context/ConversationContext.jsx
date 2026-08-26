@@ -99,6 +99,19 @@ export function ConversationProvider({ children }) {
     [activeConversationId, fetchConversations]
   );
 
+  // Rename a conversation.
+  const renameConversation = useCallback(
+    async (id, title) => {
+      try {
+        await api.patch(`/conversations/${id}`, { title });
+        await fetchConversations();
+      } catch {
+        /* continue regardless */
+      }
+    },
+    [fetchConversations]
+  );
+
   // Start a new conversation (clear active, keep list intact).
   const newConversation = useCallback(() => {
     setActiveConversationId(null);
@@ -124,6 +137,7 @@ export function ConversationProvider({ children }) {
       setActiveConversationId,
       syncAfterChat,
       deleteConversation,
+      renameConversation,
       newConversation,
       resetAll,
     }),
@@ -137,6 +151,7 @@ export function ConversationProvider({ children }) {
       loadConversation,
       syncAfterChat,
       deleteConversation,
+      renameConversation,
       newConversation,
       resetAll,
     ]

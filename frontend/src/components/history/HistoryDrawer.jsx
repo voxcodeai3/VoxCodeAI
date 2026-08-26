@@ -51,6 +51,7 @@ function HistoryDrawer({ isOpen, onClose, onSelectConversation, onSelectIntervie
     loadingConversations,
     loadConversation,
     deleteConversation,
+    renameConversation,
     newConversation,
   } = useConversations();
 
@@ -197,6 +198,7 @@ function HistoryDrawer({ isOpen, onClose, onSelectConversation, onSelectIntervie
                         isActive={c.id === activeConversationId}
                         onSelect={handleSelect}
                         onDelete={(id, title) => setPendingDelete({ id, title })}
+                        onRename={renameConversation}
                       />
                     ))}
                   </div>
