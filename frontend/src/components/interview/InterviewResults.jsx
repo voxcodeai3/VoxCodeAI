@@ -1,4 +1,4 @@
-import { Trophy, CheckCircle, AlertTriangle, Target, MessageSquare, Code, BookOpen, X } from 'lucide-react';
+import { Trophy, CheckCircle, AlertTriangle, Target, MessageSquare, Code, BookOpen, X, RotateCcw } from 'lucide-react';
 import { useInterview } from '../../context/InterviewContext';
 
 function ScoreCircle({ score, label, size = 48 }) {
@@ -31,7 +31,7 @@ function ScoreCircle({ score, label, size = 48 }) {
 }
 
 export default function InterviewResults() {
-  const { session, setShowResults, clearInterview, setInterviewState } = useInterview();
+  const { session, setShowResults, clearInterview, setInterviewState, retakeInterview } = useInterview();
 
   if (!session) return null;
 
@@ -39,6 +39,14 @@ export default function InterviewResults() {
 
   const handleClose = () => {
     clearInterview();
+  };
+
+  const handleRetake = async () => {
+    try {
+      await retakeInterview(session);
+    } catch (err) {
+      console.error('Failed to retake interview:', err);
+    }
   };
 
   return (
@@ -160,14 +168,24 @@ export default function InterviewResults() {
         </div>
       )}
 
-      {/* Close button */}
-      <button
-        type="button"
-        onClick={handleClose}
-        className="w-full rounded-xl border border-cyan-400/20 bg-cyan-400/[0.06] px-4 py-2.5 text-xs text-cyan-300 hover:bg-cyan-400/[0.12] transition-all"
-      >
-        Done
-      </button>
+      {/* Action buttons */}
+      <div className="flex gap-3">
+        <button
+          type="button"
+          onClick={handleRetake}
+          className="flex-1 flex items-center justify-center gap-2 rounded-xl border border-cyan-400/20 bg-cyan-400/[0.06] px-4 py-2.5 text-xs text-cyan-300 hover:bg-cyan-400/[0.12] transition-all"
+        >
+          <RotateCcw className="h-3.5 w-3.5" />
+          Retake
+        </button>
+        <button
+          type="button"
+          onClick={handleClose}
+          className="flex-1 rounded-xl border border-white/[0.08] bg-white/[0.03] px-4 py-2.5 text-xs text-white/50 hover:bg-white/[0.06] transition-all"
+        >
+          Done
+        </button>
+      </div>
     </div>
   );
 }

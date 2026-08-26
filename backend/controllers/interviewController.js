@@ -427,6 +427,19 @@ async function resumeInterview(req, res) {
 
 /* ── Helpers ────────────────────────────────────────────────────────────── */
 
+/* ── DELETE /api/interviews/:id — Delete an interview ────────────────────── */
+
+async function deleteInterview(req, res) {
+  try {
+    const session = await InterviewSession.findOneAndDelete({ _id: req.params.id, user: req.user.id });
+    if (!session) return res.status(404).json({ message: "Interview not found." });
+    return res.json({ message: "Interview deleted." });
+  } catch (error) {
+    console.error("deleteInterview error:", error.message);
+    return res.status(500).json({ message: "Something went wrong on our side. Please try again." });
+  }
+}
+
 function formatSession(s) {
   return {
     id: s._id,
@@ -469,4 +482,5 @@ module.exports = {
   completeInterview,
   pauseInterview,
   resumeInterview,
+  deleteInterview,
 };

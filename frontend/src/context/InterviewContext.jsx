@@ -231,6 +231,40 @@ export function InterviewProvider({ children }) {
     }
   }, []);
 
+  /** Delete an interview from history. */
+  const deleteInterview = useCallback(async (interviewId) => {
+    try {
+      await api.delete(`/interviews/${interviewId}`);
+      // If we're currently viewing this interview, clear it.
+      if (session?.id === interviewId) {
+        clearInterview();
+      }
+    } catch (err) {
+      console.error('Failed to delete interview:', err);
+    }
+  }, [session?.id, clearInterview]);
+
+  /** Retake an interview with the same config (type, language, difficulty, focusArea, durationMinutes). */
+  const retakeInterview = useCallback(async (originalSession) => {
+    try {
+      const { data } = await api.post('/interviews', {
+        type: originalSession.type,
+        difficulty: originalSession.difficulty,
+        language: originalSession.language,
+        focusArea: originalSession.focusArea,
+        durationMinutes: originalSession.durationMinutes,
+      });
+      setSession(data.session);
+      setShowResults(false);
+      setShowConfig(false);
+      setInterviewState('idle');
+      return data.session;
+    } catch (err) {
+      console.error('Failed to retake interview:', err);
+      throw err;
+    }
+  }, []);
+
   const clearInterview = useCallback(() => {
     stopTimer();
     setSession(null);
@@ -247,12 +281,12 @@ export function InterviewProvider({ children }) {
     showResults, setShowResults, showConfig, setShowConfig,
     timeRemaining,
     createSession, generateQuestion, submitAnswer,
-    completeInterview, pauseInterview, resumeInterview, viewInterview, clearInterview,
+    completeInterview, pauseInterview, resumeInterview, viewInterview, deleteInterview, retakeInterview, clearInterview,
   }), [
     session, interviewState, loading, generating, error,
     showResults, showConfig, timeRemaining,
     createSession, generateQuestion, submitAnswer,
-    completeInterview, pauseInterview, resumeInterview, viewInterview, clearInterview,
+    completeInterview, pauseInterview, resumeInterview, viewInterview, deleteInterview, retakeInterview, clearInterview,
   ]);
 
   return (
