@@ -217,6 +217,16 @@ export function InterviewProvider({ children }) {
     }
   }, [session, startTimer]);
 
+  const clearInterview = useCallback(() => {
+    stopTimer();
+    setSession(null);
+    setInterviewState('idle');
+    setTimeRemaining(null);
+    setShowResults(false);
+    setShowConfig(false);
+    setError(null);
+  }, [stopTimer]);
+
   /** Load a completed interview from history to view its results. */
   const viewInterview = useCallback(async (interviewId) => {
     try {
@@ -235,7 +245,6 @@ export function InterviewProvider({ children }) {
   const deleteInterview = useCallback(async (interviewId) => {
     try {
       await api.delete(`/interviews/${interviewId}`);
-      // If we're currently viewing this interview, clear it.
       if (session?.id === interviewId) {
         clearInterview();
       }
@@ -244,7 +253,7 @@ export function InterviewProvider({ children }) {
     }
   }, [session?.id, clearInterview]);
 
-  /** Retake an interview with the same config (type, language, difficulty, focusArea, durationMinutes). */
+  /** Retake an interview with the same config. */
   const retakeInterview = useCallback(async (originalSession) => {
     try {
       const { data } = await api.post('/interviews', {
@@ -264,16 +273,6 @@ export function InterviewProvider({ children }) {
       throw err;
     }
   }, []);
-
-  const clearInterview = useCallback(() => {
-    stopTimer();
-    setSession(null);
-    setInterviewState('idle');
-    setTimeRemaining(null);
-    setShowResults(false);
-    setShowConfig(false);
-    setError(null);
-  }, [stopTimer]);
 
   const value = useMemo(() => ({
     session, interviewState, setInterviewState,
