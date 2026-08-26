@@ -12,6 +12,8 @@ const messageSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const TITLE_MAX_LENGTH = 80;
+
 const conversationSchema = new mongoose.Schema(
   {
     userId: {
@@ -19,6 +21,12 @@ const conversationSchema = new mongoose.Schema(
       ref: "User",
       required: true,
       index: true,
+    },
+    title: {
+      type: String,
+      default: "New Conversation",
+      trim: true,
+      maxlength: TITLE_MAX_LENGTH,
     },
     language: { type: String, default: "javascript", lowercase: true, trim: true },
     level: { type: String, default: "beginner", trim: true },
@@ -30,6 +38,31 @@ const conversationSchema = new mongoose.Schema(
 
 conversationSchema.statics.findLatestForUser = function (userId) {
   return this.findOne({ userId }).sort({ updatedAt: -1 });
+};
+
+conversationSchema.statics.findByUser = function (userId) {
+  return this.find({ userId }).sort({ updatedAt: -1 });
+};
+
+/**
+ * Generate a short title from the first user message.
+ * Takes the first ~60 words, truncates at a word boundary.
+ */
+conversationSchema.statics.generateTitle = function (content) {
+  if (!content || typeof content !== "string") return "New Conversation";
+  const cleaned = content
+    .replace(/```[\s\S]*?```/g, "")
+    .replace(/`[^`]+`/g, "")
+    .replace(/[#!*\-_>]/g, "")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!cleaned) return "New Conversation";
+  const words = cleaned.split(" ").slice(0, 10);
+  let title = words.join(" ");
+  if (title.length > TITLE_MAX_LENGTH) {
+    title = title.slice(0, TITLE_MAX_LENGTH).replace(/\s+\S*$/, "");
+  }
+  return title || "New Conversation";
 };
 
 module.exports = mongoose.model("Conversation", conversationSchema);

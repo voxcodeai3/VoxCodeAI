@@ -1,6 +1,10 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { VoiceProvider } from './context/VoiceContext'
+import { ConversationProvider } from './context/ConversationContext'
+import { LearnerProfileProvider } from './context/LearnerProfileContext'
+import { CodingWorkspaceProvider } from './context/CodingWorkspaceContext'
+import { LearningProvider } from './context/LearningContext'
 import { AIProvider } from './context/AIContext'
 import Signup from './pages/Signup'
 import Login from './pages/Login'
@@ -33,8 +37,12 @@ function App() {
     <AuthProvider>
       <BrowserRouter>
         <VoiceProvider>
-          <AIProvider>
-            <Routes>
+          <ConversationProvider>
+            <LearnerProfileProvider>
+              <CodingWorkspaceProvider>
+              <LearningProvider>
+                <AIProvider>
+              <Routes>
           <Route
             path="/signup"
             element={
@@ -62,7 +70,11 @@ function App() {
           <Route path="/oauth/callback" element={<OAuthCallback />} />
           <Route path="*" element={<HomeRedirect />} />
             </Routes>
-          </AIProvider>
+                </AIProvider>
+              </LearningProvider>
+              </CodingWorkspaceProvider>
+            </LearnerProfileProvider>
+          </ConversationProvider>
         </VoiceProvider>
       </BrowserRouter>
     </AuthProvider>

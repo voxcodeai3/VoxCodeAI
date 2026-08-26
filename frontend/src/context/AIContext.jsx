@@ -10,6 +10,7 @@ import {
 import api from '../services/api';
 import { useAuth } from './AuthContext';
 import { useVoice } from './VoiceContext';
+import { useConversations } from './ConversationContext';
 
 const AIContext = createContext(null);
 
@@ -55,10 +56,6 @@ const QUICK_ACTION_PROMPTS = {
   },
 };
 
-/**
- * Combine the AI's recommended response mode with the user's preference.
- * Preference wins; "AI decides" keeps the recommendation.
- */
 function applyPreference(recommended, preference) {
   const rec =
     recommended === 'text_voice' || recommended === 'both'
@@ -82,13 +79,36 @@ function applyPreference(recommended, preference) {
 const uid = (prefix) =>
   `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`;
 
+/**
+ * Convert backend messages into the frontend message format used by MessageBubble.
+ */
+function serverMessagesToFrontend(serverMessages) {
+  if (!Array.isArray(serverMessages)) return [];
+  return serverMessages.map((m, i) => ({
+    id: `h-${i}-${m.at || Date.now()}-${m.role}`,
+    type: m.role === 'user' ? 'user' : 'ai',
+    content: m.content,
+    code: m.code || null,
+    timestamp: m.at ? new Date(m.at) : new Date(),
+    avatar: null,
+    source: m.inputMode || undefined,
+  }));
+}
+
 export function AIProvider({ children }) {
-  const { isAuthenticated } = useAuth();
+  const { isAuthenticated, logout: authLogout } = useAuth();
   const voice = useVoice();
+  const {
+    activeConversationId,
+    activeConversation,
+    syncAfterChat,
+    loadConversation,
+    newConversation,
+    resetAll: resetConversations,
+  } = useConversations();
 
   const [messages, setMessages] = useState(GREETING());
   const [isThinking, setIsThinking] = useState(false);
-  const [currentConversationId, setCurrentConversationId] = useState(null);
   const [hasFailedAttempt, setHasFailedAttempt] = useState(false);
   const [preference, setPreferenceState] = useState(() => {
     try {
@@ -105,9 +125,6 @@ export function AIProvider({ children }) {
   const [activeAction, setActiveAction] = useState(null);
   const [responseMode, setResponseMode] = useState(null);
 
-  const convIdRef = useRef(null);
-  convIdRef.current = currentConversationId;
-
   const isThinkingRef = useRef(false);
   isThinkingRef.current = isThinking;
 
@@ -122,44 +139,44 @@ export function AIProvider({ children }) {
     }
   }, []);
 
-  // Restore the latest server-side conversation so voice + text share one thread.
+  // Reset all AI state on logout.
   useEffect(() => {
-    if (!isAuthenticated) return undefined;
-    let cancelled = false;
-    (async () => {
-      try {
-        const { data } = await api.get('/ai/conversation');
-        if (cancelled || !data?.conversationId || !Array.isArray(data.messages)) return;
-        if (!data.messages.length) return;
-        setCurrentConversationId(data.conversationId);
-        setSettings((s) => ({
-          ...s,
-          language: data.language || s.language,
-          level: data.level || s.level,
-          teachingMode: data.teachingMode || s.teachingMode,
-        }));
-        setMessages([
-          ...GREETING(),
-          ...data.messages.map((m, i) => ({
-            id: `h-${i}-${m.at || Date.now()}`,
-            type: m.role === 'user' ? 'user' : 'ai',
-            content: m.content,
-            code: m.code || null,
-            timestamp: m.at ? new Date(m.at) : new Date(),
-            avatar: null,
-            source: m.inputMode || undefined,
-          })),
-        ]);
-      } catch {
-        /* offline / expired — start fresh silently */
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [isAuthenticated]);
+    if (isAuthenticated) return;
+    voice.stopSpeaking();
+    setIsThinking(false);
+    setHasFailedAttempt(false);
+    setActiveAction(null);
+    setResponseMode(null);
+    pendingRetryRef.current = null;
+    setSettings({ language: 'javascript', level: 'beginner', teachingMode: 'learn' });
+    setMessages(GREETING());
+  }, [isAuthenticated, voice]);
 
-  /** Core request lifecycle. Drives VoiceWeave through thinking → speaking/idle. */
+  // When ConversationContext loads a conversation, populate AI messages.
+  useEffect(() => {
+    if (!activeConversation) {
+      // No active conversation — show greeting (but only if we're not in the middle of something).
+      if (!isThinking) setMessages(GREETING());
+      return;
+    }
+    const serverMessages = activeConversation.messages || [];
+    if (serverMessages.length === 0) {
+      setMessages(GREETING());
+      return;
+    }
+    setMessages([
+      ...GREETING(),
+      ...serverMessagesToFrontend(serverMessages),
+    ]);
+    setSettings((s) => ({
+      ...s,
+      language: activeConversation.language || s.language,
+      level: activeConversation.level || s.level,
+      teachingMode: activeConversation.teachingMode || s.teachingMode,
+    }));
+  }, [activeConversation, isThinking]);
+
+  /** Core request lifecycle. */
   const runChat = useCallback(
     async ({ text, inputMode, overrides = {} }) => {
       setIsThinking(true);
@@ -167,14 +184,13 @@ export function AIProvider({ children }) {
       try {
         const { data } = await api.post('/ai/chat', {
           message: text,
-          conversationId: convIdRef.current || undefined,
+          conversationId: activeConversationId || undefined,
           inputMode,
           language: overrides.language || settings.language,
           level: overrides.level || settings.level,
           teachingMode: overrides.teachingMode || settings.teachingMode,
+          codingContext: overrides.codingContext || undefined,
         });
-
-        if (data?.conversationId) setCurrentConversationId(data.conversationId);
 
         const finalMode = applyPreference(data.responseMode, preference);
         setResponseMode(finalMode);
@@ -191,6 +207,11 @@ export function AIProvider({ children }) {
         setIsThinking(false);
         setHasFailedAttempt(false);
         pendingRetryRef.current = null;
+
+        // Sync conversation list and active ID with ConversationContext.
+        if (data.conversationId) {
+          syncAfterChat(data.conversationId);
+        }
 
         if (finalMode !== 'text' && aiMessage.content && voice.support.tts) {
           voice.speakResponse(aiMessage.content, aiMessage.id);
@@ -218,20 +239,16 @@ export function AIProvider({ children }) {
         setHasFailedAttempt(true);
       }
     },
-    [preference, settings, voice],
+    [activeConversationId, preference, settings, voice, syncAfterChat],
   );
 
-  /**
-   * Send a user message (typed or spoken). Voice and text share the same
-   * conversation — inputMode only tags how the message was captured.
-   */
   const sendMessage = useCallback(
     (rawText, inputMode = 'text', overrides = {}) => {
       const text = (rawText || '').trim();
       if (!text) return;
       if (isThinkingRef.current) return;
 
-      voice.stopSpeaking(); // starting a new exchange stops current playback
+      voice.stopSpeaking();
       setMessages((prev) => [
         ...prev,
         {
@@ -252,7 +269,6 @@ export function AIProvider({ children }) {
   const sendRef = useRef(sendMessage);
   sendRef.current = sendMessage;
 
-  // Spoken transcripts flow into the same pipeline as typed messages.
   useEffect(() => {
     voice.setFinalTranscriptHandler((spokenText) => {
       sendRef.current(spokenText, 'voice');
@@ -260,7 +276,6 @@ export function AIProvider({ children }) {
     return () => voice.setFinalTranscriptHandler(null);
   }, [voice]);
 
-  /** Retry the last failed request without losing the original message. */
   const retryLast = useCallback(() => {
     const pending = pendingRetryRef.current;
     if (!pending) return;
@@ -270,7 +285,19 @@ export function AIProvider({ children }) {
     runChat(pending);
   }, [runChat]);
 
-  const clearConversation = useCallback(async () => {
+  // Clear active conversation — start fresh without deleting anything.
+  const clearConversation = useCallback(() => {
+    voice.stopSpeaking();
+    setResponseMode(null);
+    setHasFailedAttempt(false);
+    setActiveAction(null);
+    pendingRetryRef.current = null;
+    setSettings({ language: 'javascript', level: 'beginner', teachingMode: 'learn' });
+    newConversation();
+  }, [voice, newConversation]);
+
+  // Full delete — clears all conversations on server.
+  const deleteAllConversations = useCallback(async () => {
     try {
       await api.delete('/ai/conversation');
     } catch {
@@ -278,15 +305,14 @@ export function AIProvider({ children }) {
     }
     voice.stopSpeaking();
     setResponseMode(null);
-    setCurrentConversationId(null);
     setHasFailedAttempt(false);
     setActiveAction(null);
     pendingRetryRef.current = null;
     setSettings({ language: 'javascript', level: 'beginner', teachingMode: 'learn' });
     setMessages(GREETING());
-  }, [voice]);
+    resetConversations();
+  }, [voice, resetConversations]);
 
-  /** Quick actions update the teaching mode and send an appropriate opener. */
   const triggerQuickAction = useCallback(
     (actionId) => {
       const config = QUICK_ACTION_PROMPTS[actionId];
@@ -298,11 +324,20 @@ export function AIProvider({ children }) {
     [sendMessage],
   );
 
+  // Load a specific conversation from history (called from TextConsole after ConversationContext loads it).
+  const loadConversationMessages = useCallback(
+    async (id) => {
+      const data = await loadConversation(id);
+      return data;
+    },
+    [loadConversation],
+  );
+
   const value = useMemo(
     () => ({
       messages,
       isThinking,
-      currentConversationId,
+      currentConversationId: activeConversationId,
       hasFailedAttempt,
       responseMode,
       preference,
@@ -313,12 +348,14 @@ export function AIProvider({ children }) {
       sendMessage,
       retryLast,
       clearConversation,
+      deleteAllConversations,
       triggerQuickAction,
+      loadConversationMessages,
     }),
     [
       messages,
       isThinking,
-      currentConversationId,
+      activeConversationId,
       hasFailedAttempt,
       responseMode,
       preference,
@@ -328,7 +365,9 @@ export function AIProvider({ children }) {
       sendMessage,
       retryLast,
       clearConversation,
+      deleteAllConversations,
       triggerQuickAction,
+      loadConversationMessages,
     ],
   );
 

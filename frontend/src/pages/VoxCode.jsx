@@ -1,9 +1,13 @@
-import { Mic, Square, LogOut } from 'lucide-react';
+import { useState } from 'react';
+import { Mic, Square, LogOut, Code2 } from 'lucide-react';
 import VoiceWeave from '../components/voice/VoiceWeave';
 import HorizontalWaveform from '../components/voice/HorizontalWaveform';
 import StarField from '../components/voice/StarField';
 import QuickActions from '../components/voice/QuickActions';
 import TextConsole from '../components/conversation/TextConsole';
+import CodeWorkspace from '../components/editor/CodeWorkspace';
+import HistoryButton from '../components/history/HistoryButton';
+import HistoryDrawer from '../components/history/HistoryDrawer';
 import { useAuth } from '../context/AuthContext';
 import { useVoice } from '../context/VoiceContext';
 import { useAI } from '../context/AIContext';
@@ -53,6 +57,8 @@ function HoloRings({ active }) {
 
 export default function VoxCode() {
   const { logout } = useAuth();
+  const [isWorkspaceOpen, setIsWorkspaceOpen] = useState(false);
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const {
     interactionState,
     isListening,
@@ -127,7 +133,12 @@ export default function VoxCode() {
         </p>
       </header>
 
-      {/* ── logout ── */}
+      {/* ── history (left) ── */}
+      <div className="absolute left-4 top-4 z-30">
+        <HistoryButton onClick={() => setIsHistoryOpen(true)} />
+      </div>
+
+      {/* ── logout (right) ── */}
       <button
         type="button"
         onClick={logout}
@@ -295,6 +306,26 @@ export default function VoxCode() {
       </main>
 
       <TextConsole />
+
+      {/* Coding workspace toggle — bottom-left */}
+      <div className="absolute bottom-4 left-4 z-30">
+        <button
+          type="button"
+          onClick={() => setIsWorkspaceOpen(true)}
+          className="flex items-center gap-2 rounded-xl border border-white/[0.06] bg-white/[0.02] px-3 py-2 text-[10px] text-white/30 hover:text-white/50 hover:border-white/[0.1] transition-all"
+        >
+          <Code2 className="h-3 w-3" />
+          <span>CODE</span>
+        </button>
+      </div>
+
+      <CodeWorkspace isOpen={isWorkspaceOpen} onClose={() => setIsWorkspaceOpen(false)} />
+
+      <HistoryDrawer
+        isOpen={isHistoryOpen}
+        onClose={() => setIsHistoryOpen(false)}
+        onSelectConversation={() => {}}
+      />
     </div>
   );
 }

@@ -1,7 +1,14 @@
 const mongoose = require("mongoose");
 const Conversation = require("../models/Conversation");
+const LearnerProfile = require("../models/LearnerProfile");
 const { generateResponse } = require("../services/aiService");
 const { modelManager } = require("../services/modelManager");
+const {
+  extractSignals,
+  updateProfile: updateLearnerProfile,
+  buildLearnerContext,
+  buildConversationSummary,
+} = require("../services/memoryService");
 
 const MAX_MESSAGE_LENGTH = 4000;
 const HISTORY_WINDOW = 12;
@@ -22,6 +29,7 @@ async function chat(req, res) {
       language = "javascript",
       level = "beginner",
       teachingMode = "learn",
+      codingContext,
     } = req.body || {};
 
     if (typeof message !== "string" || !message.trim()) {
@@ -45,6 +53,7 @@ async function chat(req, res) {
         language,
         level,
         teachingMode,
+        title: Conversation.generateTitle(message),
       });
     } else {
       conversation.language = language || conversation.language;
@@ -56,6 +65,43 @@ async function chat(req, res) {
       .slice(-HISTORY_WINDOW)
       .map((m) => ({ role: m.role, content: m.content }));
 
+    // Load learner profile and build context for personalized responses.
+    const learnerProfile = await LearnerProfile.findOrCreate(userId);
+    const learnerContext = buildLearnerContext(learnerProfile);
+
+    // Extract learning signals from the user's message and update profile.
+    const signals = extractSignals(message);
+    if (signals) {
+      updateLearnerProfile(learnerProfile, signals);
+    }
+
+    // Build coding context block for the AI prompt.
+    let codingContextBlock = "";
+    if (codingContext && typeof codingContext === "object") {
+      const parts = [];
+      if (codingContext.activeFile) {
+        parts.push(`Active file: ${codingContext.activeFile}`);
+      }
+      if (codingContext.language) {
+        parts.push(`File language: ${codingContext.language}`);
+      }
+      if (codingContext.selectedCode) {
+        parts.push(`Selected code:\n\`\`\`\n${codingContext.selectedCode}\n\`\`\``);
+      }
+      if (codingContext.currentCode) {
+        parts.push(`Current file content:\n\`\`\`\n${codingContext.currentCode}\n\`\`\``);
+      }
+      if (codingContext.projectFiles?.length) {
+        parts.push(`Project files: ${codingContext.projectFiles.join(", ")}`);
+      }
+      if (codingContext.error) {
+        parts.push(`Error message: ${codingContext.error}`);
+      }
+      if (parts.length) {
+        codingContextBlock = `\n\nCODING WORKSPACE:\n${parts.join("\n")}`;
+      }
+    }
+
     let result;
     try {
       result = await generateResponse({
@@ -64,18 +110,21 @@ async function chat(req, res) {
         language: conversation.language,
         level: conversation.level,
         teachingMode: conversation.teachingMode,
+        learnerContext,
+        codingContext: codingContextBlock,
       });
     } catch (error) {
       if (error.code === "AI_NOT_CONFIGURED") {
         return res.status(503).json({
+          code: "AI_NOT_CONFIGURED",
           message:
             "The AI engine isn't configured on the server yet. Please add your provider API key to the backend environment.",
         });
       }
       if (error.code === "ALL_MODELS_UNAVAILABLE") {
         return res.status(503).json({
-          message:
-            "VoxCode's AI models are temporarily unavailable. Please try again later.",
+          code: "ALL_MODELS_UNAVAILABLE",
+          message: "All AI models are temporarily unavailable. Please try again later.",
         });
       }
       console.error("AI generation failed:", error.message);
@@ -103,6 +152,11 @@ async function chat(req, res) {
     }
 
     await conversation.save();
+
+    // Save learner profile updates (conservative — only changed if new signals were found).
+    if (signals) {
+      await learnerProfile.save();
+    }
 
     return res.json({
       message: result.reply,

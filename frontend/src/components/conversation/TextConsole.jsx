@@ -1,16 +1,23 @@
 import { useEffect, useRef, useState } from 'react';
-import { Maximize, Minus, X, MessageCircle, Microchip, Trash2 } from 'lucide-react';
+import { Maximize, Minus, X, MessageCircle, Microchip, Trash2, User, BookOpen } from 'lucide-react';
 import ConversationPanel from './ConversationPanel';
 import MessageComposer from './MessageComposer';
 import { useAI } from '../../context/AIContext';
+import { useConversations } from '../../context/ConversationContext';
+import LearnerProfilePanel from '../learner/LearnerProfilePanel';
+import LearningWorkspace from '../learning/LearningWorkspace';
+import { useLearning } from '../../context/LearningContext';
 
 function TextConsole({ expanded = false }) {
   const [isExpanded, setIsExpanded] = useState(expanded);
-  const { messages, isThinking, clearConversation } = useAI();
+  const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [isLearningOpen, setIsLearningOpen] = useState(false);
+  const { messages, isThinking, clearConversation, loadConversationMessages } = useAI();
+  const { activeConversationId } = useConversations();
+  const { session: activeSession } = useLearning();
   const scrollRef = useRef(null);
   const wasExpandedRef = useRef(isExpanded);
 
-  // Auto-scroll to the newest message while the console is open.
   useEffect(() => {
     if (!isExpanded) return undefined;
     const el = scrollRef.current;
@@ -18,7 +25,6 @@ function TextConsole({ expanded = false }) {
     return undefined;
   }, [messages, isThinking, isExpanded]);
 
-  // Reset scroll when expanding.
   useEffect(() => {
     if (isExpanded && !wasExpandedRef.current && scrollRef.current) {
       scrollRef.current.scrollTop = scrollRef.current.scrollHeight;
@@ -29,20 +35,22 @@ function TextConsole({ expanded = false }) {
   return (
     <div className="fixed bottom-4 right-4 z-50">
       {!isExpanded && (
-        <button
-          type="button"
-          onClick={() => setIsExpanded(true)}
-          className="w-[280px] rounded-2xl border border-cyan-400/20 bg-[#040a14]/80 backdrop-blur-2xl flex flex-col items-center justify-center p-4 text-sm text-cyan-300 transition-all duration-500 hover:scale-[1.02] hover:border-cyan-300/50 hover:bg-white/[0.06] cursor-pointer group"
-        >
-          <div className="flex items-center gap-2 mb-2">
-            <MessageCircle className="h-4 w-4 text-cyan-300" />
-            <span>Ask VoxCode...</span>
-          </div>
-          <div className="flex items-center gap-2">
-            <span className="opacity-70">⌨</span>
-            <Maximize className="h-4 w-4 text-cyan-300 transition-transform duration-300 group-hover:rotate-90" />
-          </div>
-        </button>
+        <div className="flex flex-col items-end gap-2">
+          <button
+            type="button"
+            onClick={() => setIsExpanded(true)}
+            className="w-[280px] rounded-2xl border border-cyan-400/20 bg-[#040a14]/80 backdrop-blur-2xl flex flex-col items-center justify-center p-4 text-sm text-cyan-300 transition-all duration-500 hover:scale-[1.02] hover:border-cyan-300/50 hover:bg-white/[0.06] cursor-pointer group"
+          >
+            <div className="flex items-center gap-2 mb-2">
+              <MessageCircle className="h-4 w-4 text-cyan-300" />
+              <span>Ask VoxCode...</span>
+            </div>
+            <div className="flex items-center gap-2">
+              <span className="opacity-70">⌨</span>
+              <Maximize className="h-4 w-4 text-cyan-300 transition-transform duration-300 group-hover:rotate-90" />
+            </div>
+          </button>
+        </div>
       )}
       {isExpanded && (
         <div className="w-[70vw] h-[80vh] max-w-[900px] max-h-[700px] rounded-3xl border border-cyan-400/20 bg-[#040a14]/85 backdrop-blur-2xl flex flex-col overflow-hidden transition-all duration-500">
@@ -60,6 +68,22 @@ function TextConsole({ expanded = false }) {
               </div>
             </div>
             <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={() => setIsLearningOpen(true)}
+                aria-label="Open practice"
+                className="rounded-lg p-1.5 text-cyan-400/60 hover:text-cyan-400 transition-colors"
+              >
+                <BookOpen className="h-4 w-4" />
+              </button>
+              <button
+                type="button"
+                onClick={() => setIsProfileOpen(true)}
+                aria-label="Learning profile"
+                className="rounded-lg p-1.5 text-cyan-400/60 hover:text-cyan-400 transition-colors"
+              >
+                <User className="h-4 w-4" />
+              </button>
               <button
                 type="button"
                 onClick={clearConversation}
@@ -93,6 +117,15 @@ function TextConsole({ expanded = false }) {
           <MessageComposer />
         </div>
       )}
+
+      <LearnerProfilePanel
+        isOpen={isProfileOpen}
+        onClose={() => setIsProfileOpen(false)}
+      />
+      <LearningWorkspace
+        isOpen={isLearningOpen}
+        onClose={() => setIsLearningOpen(false)}
+      />
     </div>
   );
 }

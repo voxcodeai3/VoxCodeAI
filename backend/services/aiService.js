@@ -13,12 +13,7 @@ const {
   isRetryable,
 } = require("./modelManager");
 
-const GEMINI_API_URL = "https://generativelanguage.googleapis.com/v1beta";
-
 const DEFAULT_MODELS = {
-  gemini: "gemini-2.0-flash",
-  openai: "gpt-4o-mini",
-  openrouter: "openai/gpt-4o-mini",
   compatible: "gpt-4o-mini",
 };
 
@@ -37,7 +32,7 @@ Choose the most useful presentation format for each answer and set response_mode
 - "text": large code examples, debugging, long technical answers, code comparisons, tables, complex structured output (e.g. "Debug this React component.").
 The response_mode must be exactly one of: text, voice, text_voice.`;
 
-function buildSystemPrompt({ language, level, teachingMode }) {
+function buildSystemPrompt({ language, level, teachingMode, learnerContext = "", codingContext = "" }) {
   return `You are VoxCode, a friendly AI coding teacher.
 
 Your job is to help students learn programming.
@@ -47,14 +42,32 @@ Adapt explanations to the student's current session:
 - programming language: ${language}
 - learning level: ${level}
 - teaching mode: ${teachingMode}
+${learnerContext}
+${codingContext}
 
-Prefer teaching and hints over immediately giving complete solutions when the student is practicing or being quizzed.
+When the user asks you to generate code:
+- Return the code in the "code" field
+- Keep "reply" as a brief explanation of what the code does
+- Do NOT wrap the code in markdown fences inside the JSON
 
-When debugging code:
-- identify the issue
-- explain why it happens
-- show the corrected approach
-- teach the underlying concept
+When the user asks you to edit/modify existing code:
+- Return ONLY the complete modified code in the "code" field
+- In "reply", explain what you changed and why
+- Preserve the original structure as much as possible
+
+When the user asks you to explain code:
+- Put a detailed explanation in "reply"
+- Put the original code (unchanged) in "code" field
+- Break down what each part does
+
+When the user asks you to debug code:
+- Identify the problem in "reply"
+- Explain why it happens
+- Put the corrected code in the "code" field
+
+When the user asks a general question (no code needed):
+- Answer in "reply"
+- Set "code" to null
 
 When code is involved, put the code in the dedicated "code" field instead of writing it inside "reply". Keep "reply" as the spoken/reading-friendly explanation. If there is no code, "code" must be null.
 
@@ -109,11 +122,7 @@ async function fetchWithTimeout(url, options) {
 async function callModel(model, { systemPrompt, history, message }) {
   const provider = (model.provider || "").toLowerCase();
 
-  if (provider === "gemini") {
-    return callGemini(model, { systemPrompt, history, message });
-  }
-
-  // Everything else goes through OpenAI-compatible endpoint.
+  // Everything goes through OpenAI-compatible endpoint.
   let baseUrl;
   const extraHeaders = {};
 
@@ -139,46 +148,6 @@ async function callModel(model, { systemPrompt, history, message }) {
     message,
     extraHeaders,
   });
-}
-
-/* ── Gemini (direct REST, no SDK) ───────────────────────────────────────── */
-
-async function callGemini(model, { systemPrompt, history, message }) {
-  const modelName = model.name || DEFAULT_MODELS.gemini;
-  const url = `${GEMINI_API_URL}/models/${modelName}:generateContent?key=${encodeURIComponent(model.apiKey)}`;
-
-  const contents = [
-    ...history.map((m) => ({
-      role: m.role === "user" ? "user" : "model",
-      parts: [{ text: m.content }],
-    })),
-    { role: "user", parts: [{ text: message }] },
-  ];
-
-  const res = await fetchWithTimeout(url, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      systemInstruction: { parts: [{ text: systemPrompt }] },
-      contents,
-      generationConfig: {
-        temperature: 0.7,
-        maxOutputTokens: 1600,
-        responseMimeType: "application/json",
-      },
-    }),
-  });
-
-  if (!res.ok) {
-    const body = await res.text().catch(() => "");
-    const err = new Error(`Gemini API error ${res.status}: ${body.slice(0, 300)}`);
-    err.status = res.status;
-    throw err;
-  }
-
-  const data = await res.json();
-  const parts = data?.candidates?.[0]?.content?.parts || [];
-  return parts.map((p) => p.text || "").join("");
 }
 
 /* ── OpenAI-compatible ──────────────────────────────────────────────────── */
@@ -238,6 +207,8 @@ async function generateResponse({
   language = "javascript",
   level = "beginner",
   teachingMode = "learn",
+  learnerContext = "",
+  codingContext = "",
 }) {
   modelManager.init();
 
@@ -247,7 +218,7 @@ async function generateResponse({
     throw err;
   }
 
-  const systemPrompt = buildSystemPrompt({ language, level, teachingMode });
+  const systemPrompt = buildSystemPrompt({ language, level, teachingMode, learnerContext, codingContext });
   const trimmedHistory = history.slice(-MAX_HISTORY_MESSAGES);
   const attempted = new Set(); // prevent infinite failover loops
 
@@ -322,4 +293,172 @@ async function generateResponse({
   throw err;
 }
 
-module.exports = { generateResponse };
+module.exports = { generateResponse, generateQuestion, evaluateAnswer };
+
+/* ── Learning question generation ───────────────────────────────────────── */
+
+const QUESTION_GENERATION_PROMPT = `You are VoxCode, an AI coding teacher generating a practice question.
+
+Generate a single coding/programming question based on the request.
+Return STRICTLY as minified JSON on a single line, no markdown fences:
+{"question":"<the question text>","type":"<multiple_choice|coding|debugging|output_prediction|conceptual|true_false>","options":["<optA>","<optB>","<optC>","<optD>"],"hints":["<hint1>","<hint2>","<hint3>"],"solution":"<the correct answer or code>","explanation":"<why this is the answer>","code":"<any code snippet in the question, or null>","expectedConcepts":["<concept1>"]}
+
+Rules:
+- type "multiple_choice" and "true_false" MUST have 2-4 options
+- type "coding" should have code=null in options and solution as code
+- hints must be progressive (easy → medium → explicit)
+- question must be clear and specific
+- explanation must match the learner level
+- Never include markdown fences in the JSON`;
+
+const ANSWER_EVALUATION_PROMPT = `You are VoxCode, an AI coding teacher evaluating a student's answer.
+
+Given the question, expected answer/concepts, and the student's answer, evaluate the response.
+
+Return STRICTLY as minified JSON on a single line:
+{"result":"<correct|partially_correct|incorrect>","score":<0.0 to 1.0>,"feedback":"<specific feedback about the answer>","explanation":"<concept explanation if incorrect>","nextAction":"<next|hint|retry>"}
+
+Rules:
+- result "correct" → score 0.8-1.0
+- result "partially_correct" → score 0.25-0.75
+- result "incorrect" → score 0.0-0.2
+- feedback must be specific and educational
+- explanation must teach the concept, not just state the answer
+- nextAction: "next" if correct, "hint" if close, "retry" if far off
+- Match difficulty to the learner level`;
+
+async function generateQuestion({ topic, language, difficulty, learnerContext = "", type = "coding" }) {
+  modelManager.init();
+  if (modelManager.size === 0) {
+    const err = new Error("AI_NOT_CONFIGURED");
+    err.code = "AI_NOT_CONFIGURED";
+    throw err;
+  }
+
+  const prompt = `Generate a ${difficulty || "medium"} difficulty ${type} question about ${topic || "programming"} in ${language || "javascript"}.
+${learnerContext ? `Learner context: ${learnerContext}` : ""}
+Vary the question - do not use generic or repeated patterns. Be specific and practical.`;
+
+  const systemPrompt = QUESTION_GENERATION_PROMPT;
+  const attempted = new Set();
+
+  for (let attempt = 0; attempt < modelManager.size; attempt++) {
+    const model = modelManager.select();
+    if (!model) break;
+    attempted.add(model.id);
+
+    try {
+      const raw = await callModel(model, { systemPrompt, history: [], message: prompt });
+      modelManager.release(model.id);
+
+      let parsed;
+      try {
+        const text = String(raw).trim();
+        const start = text.indexOf("{");
+        const end = text.lastIndexOf("}");
+        parsed = JSON.parse(text.slice(start, end + 1));
+      } catch {
+        return {
+          question: String(raw || "Describe a coding concept."),
+          type: "conceptual",
+          options: [],
+          hints: [],
+          solution: null,
+          explanation: null,
+          code: null,
+          expectedConcepts: [],
+        };
+      }
+
+      return {
+        question: parsed.question || "Describe a coding concept.",
+        type: ["multiple_choice", "coding", "debugging", "output_prediction", "conceptual", "true_false"].includes(parsed.type) ? parsed.type : "conceptual",
+        options: Array.isArray(parsed.options) ? parsed.options : [],
+        hints: Array.isArray(parsed.hints) ? parsed.hints : [],
+        solution: parsed.solution || null,
+        explanation: parsed.explanation || null,
+        code: parsed.code || null,
+        expectedConcepts: Array.isArray(parsed.expectedConcepts) ? parsed.expectedConcepts : [],
+        topic: topic || null,
+        language: language || null,
+        difficulty: difficulty || "medium",
+      };
+    } catch (err) {
+      const category = categorizeError(err);
+      if (category === "RATE_LIMITED") { modelManager.markRateLimited(model.id, category); continue; }
+      if (isRetryable(category)) { modelManager.markError(model.id, category); continue; }
+      modelManager.markUnavailable(model.id, category);
+      if (modelManager.size === 1) throw err;
+    }
+  }
+
+  const err = new Error("All models unavailable for question generation.");
+  err.code = "ALL_MODELS_UNAVAILABLE";
+  throw err;
+}
+
+async function evaluateAnswer({ question, expectedAnswer, expectedConcepts, studentAnswer, difficulty, learnerContext = "" }) {
+  modelManager.init();
+  if (modelManager.size === 0) {
+    const err = new Error("AI_NOT_CONFIGURED");
+    err.code = "AI_NOT_CONFIGURED";
+    throw err;
+  }
+
+  const prompt = `Evaluate this student answer:
+
+Question: ${question}
+${expectedAnswer ? `Expected: ${expectedAnswer}` : ""}
+${expectedConcepts?.length ? `Key concepts: ${expectedConcepts.join(", ")}` : ""}
+Difficulty: ${difficulty || "medium"}
+Student answer: ${studentAnswer}
+${learnerContext ? `Learner: ${learnerContext}` : ""}`;
+
+  const systemPrompt = ANSWER_EVALUATION_PROMPT;
+  const attempted = new Set();
+
+  for (let attempt = 0; attempt < modelManager.size; attempt++) {
+    const model = modelManager.select();
+    if (!model) break;
+    attempted.add(model.id);
+
+    try {
+      const raw = await callModel(model, { systemPrompt, history: [], message: prompt });
+      modelManager.release(model.id);
+
+      let parsed;
+      try {
+        const text = String(raw).trim();
+        const start = text.indexOf("{");
+        const end = text.lastIndexOf("}");
+        parsed = JSON.parse(text.slice(start, end + 1));
+      } catch {
+        return {
+          result: "incorrect",
+          score: 0,
+          feedback: "Could not evaluate the answer.",
+          explanation: null,
+          nextAction: "retry",
+        };
+      }
+
+      return {
+        result: ["correct", "partially_correct", "incorrect"].includes(parsed.result) ? parsed.result : "incorrect",
+        score: typeof parsed.score === "number" ? Math.max(0, Math.min(1, parsed.score)) : (parsed.result === "correct" ? 1 : parsed.result === "partially_correct" ? 0.5 : 0),
+        feedback: parsed.feedback || "No feedback available.",
+        explanation: parsed.explanation || null,
+        nextAction: ["next", "hint", "retry"].includes(parsed.nextAction) ? parsed.nextAction : "next",
+      };
+    } catch (err) {
+      const category = categorizeError(err);
+      if (category === "RATE_LIMITED") { modelManager.markRateLimited(model.id, category); continue; }
+      if (isRetryable(category)) { modelManager.markError(model.id, category); continue; }
+      modelManager.markUnavailable(model.id, category);
+      if (modelManager.size === 1) throw err;
+    }
+  }
+
+  const err = new Error("All models unavailable for answer evaluation.");
+  err.code = "ALL_MODELS_UNAVAILABLE";
+  throw err;
+}

@@ -4,6 +4,9 @@ const cors = require("cors");
 const mongoose = require("mongoose");
 const authRoutes = require("./routes/authRoutes");
 const aiRoutes = require("./routes/aiRoutes");
+const conversationRoutes = require("./routes/conversationRoutes");
+const learnerRoutes = require("./routes/learnerRoutes");
+const learningRoutes = require("./routes/learningRoutes");
 
 const app = express();
 
@@ -18,6 +21,15 @@ app.use("/api/auth", authRoutes);
 
 // AI tutor routes (JWT protected)
 app.use("/api/ai", aiRoutes);
+
+// Conversation history routes (JWT protected)
+app.use("/api/conversations", conversationRoutes);
+
+// Learner profile routes (JWT protected)
+app.use("/api/learner", learnerRoutes);
+
+// Learning session routes (JWT protected)
+app.use("/api/learning", learningRoutes);
 
 app.use((err, req, res, next) => {
   console.error("Unhandled error:", err);
