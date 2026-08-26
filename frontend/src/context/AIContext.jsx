@@ -129,6 +129,7 @@ export function AIProvider({ children }) {
   isThinkingRef.current = isThinking;
 
   const pendingRetryRef = useRef(null);
+  const syncingRef = useRef(false);
 
   const setPreference = useCallback((pref) => {
     setPreferenceState(pref);
@@ -148,6 +149,7 @@ export function AIProvider({ children }) {
     setActiveAction(null);
     setResponseMode(null);
     pendingRetryRef.current = null;
+    syncingRef.current = false;
     setSettings({ language: 'javascript', level: 'beginner', teachingMode: 'learn' });
     setMessages(GREETING());
   }, [isAuthenticated, voice]);
@@ -156,7 +158,8 @@ export function AIProvider({ children }) {
   useEffect(() => {
     if (!activeConversation) {
       // No active conversation — show greeting (but only if we're not in the middle of something).
-      if (!isThinking) setMessages(GREETING());
+      // Also skip if we just synced after a chat (syncingRef prevents race condition).
+      if (!isThinking && !syncingRef.current) setMessages(GREETING());
       return;
     }
     const serverMessages = activeConversation.messages || [];
@@ -182,13 +185,17 @@ export function AIProvider({ children }) {
       setIsThinking(true);
       voice.setThinking();
       try {
+        // Reset teachingMode to 'learn' for regular chat (no overrides).
+        const mode = overrides.teachingMode || settings.teachingMode;
+        const effectiveMode = overrides.teachingMode ? mode : (mode === 'interview' || mode === 'practice' || mode === 'quiz' || mode === 'debug') ? 'learn' : mode;
+
         const { data } = await api.post('/ai/chat', {
           message: text,
           conversationId: activeConversationId || undefined,
           inputMode,
           language: overrides.language || settings.language,
           level: overrides.level || settings.level,
-          teachingMode: overrides.teachingMode || settings.teachingMode,
+          teachingMode: effectiveMode,
           codingContext: overrides.codingContext || undefined,
         });
 
@@ -209,8 +216,13 @@ export function AIProvider({ children }) {
         pendingRetryRef.current = null;
 
         // Sync conversation list and active ID with ConversationContext.
+        // Set syncingRef to prevent the activeConversation useEffect from
+        // wiping messages during the brief null state of the re-fetch.
         if (data.conversationId) {
+          syncingRef.current = true;
           syncAfterChat(data.conversationId);
+          // Clear the flag after a short delay to allow the useEffect to run.
+          setTimeout(() => { syncingRef.current = false; }, 500);
         }
 
         if (finalMode !== 'text' && aiMessage.content && voice.support.tts) {
