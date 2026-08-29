@@ -324,7 +324,7 @@ export default function VoxCode() {
         />
       </main>
 
-      <TextConsole />
+      {!isWorkspaceOpen && <TextConsole />}
 
       {/* Coding workspace toggle — bottom-left */}
       <div className="absolute bottom-4 left-4 z-30">
