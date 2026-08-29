@@ -157,14 +157,14 @@ export default function LearningDashboard() {
           <div className="flex gap-2">
             <button
               type="button"
-              onClick={() => navigate('/voxcode')}
-              className="flex items-center gap-1.5 rounded-xl border border-cyan-400/20 bg-cyan-400/[0.06] px-4 py-2 text-[11px] text-cyan-300 hover:bg-cyan-400/[0.12] transition-all"
-            >
-              <Play className="h-3 w-3" /> Start Practicing
-            </button>
-            <button
-              type="button"
-              onClick={() => navigate('/voxcode')}
+            onClick={() => navigate('/voxcode?action=practice')}
+            className="flex items-center gap-1.5 rounded-xl border border-cyan-400/20 bg-cyan-400/[0.06] px-4 py-2 text-[11px] text-cyan-300 hover:bg-cyan-400/[0.12] transition-all"
+          >
+            <Play className="h-3 w-3" /> Start Practicing
+          </button>
+          <button
+            type="button"
+            onClick={() => navigate('/voxcode?action=quiz')}
               className="flex items-center gap-1.5 rounded-xl border border-violet-400/20 bg-violet-400/[0.06] px-4 py-2 text-[11px] text-violet-300 hover:bg-violet-400/[0.12] transition-all"
             >
               <Target className="h-3 w-3" /> Take a Quiz
