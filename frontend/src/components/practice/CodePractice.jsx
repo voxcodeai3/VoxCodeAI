@@ -27,6 +27,7 @@ export default function CodePractice({ isOpen, onClose }) {
   const [difficulty, setDifficulty] = useState('medium');
   const [hintIndex, setHintIndex] = useState(0);
   const [showConfig, setShowConfig] = useState(true);
+  const [error, setError] = useState(null);
 
   useEffect(() => {
     if (!isOpen) return;
@@ -38,21 +39,24 @@ export default function CodePractice({ isOpen, onClose }) {
     setShowConfig(false);
     setCode('// Write your code here\n');
     setHintIndex(0);
-    await sendPracticeMessage(
+    setError(null);
+    const result = await sendPracticeMessage(
       `Generate a ${difficulty} coding question about ${topic}`,
       'generate',
       { topic, difficulty, type: 'coding' }
     );
+    if (!result) setError('Failed to generate question. Is the backend server running?');
   }, [sendPracticeMessage, topic, difficulty]);
 
   const handleSubmit = useCallback(async () => {
     if (!practiceState?.question) return;
+    setError(null);
     const questionText = typeof practiceState.question === 'string'
       ? practiceState.question
       : practiceState.question.question || JSON.stringify(practiceState.question);
     const expectedConcepts = practiceState.question?.expectedConcepts || [];
 
-    await sendPracticeMessage(
+    const result = await sendPracticeMessage(
       `Evaluate this code answer`,
       'evaluate',
       {
@@ -62,6 +66,7 @@ export default function CodePractice({ isOpen, onClose }) {
         difficulty,
       }
     );
+    if (!result) setError('Failed to evaluate answer. Is the backend server running?');
   }, [sendPracticeMessage, practiceState, code, difficulty]);
 
   const handleHint = useCallback(() => {
@@ -74,6 +79,7 @@ export default function CodePractice({ isOpen, onClose }) {
     setCode('// Write your code here\n');
     setHintIndex(0);
     setShowConfig(true);
+    setError(null);
   }, [clearPractice]);
 
   if (!isOpen) return null;
@@ -177,7 +183,26 @@ export default function CodePractice({ isOpen, onClose }) {
             <div className="w-[320px] shrink-0 border-r border-cyan-400/10 flex flex-col overflow-hidden">
               <div className="flex-1 overflow-y-auto p-4 space-y-4">
                 {/* Question */}
-                {questionText ? (
+                {isThinking && (
+                  <div className="flex items-center justify-center h-32 text-cyan-400/30 text-xs gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" /> Generating question...
+                  </div>
+                )}
+                {!isThinking && !questionText && !error && (
+                  <div className="flex items-center justify-center h-32 text-white/20 text-xs">
+                    No active question
+                  </div>
+                )}
+                {!isThinking && error && (
+                  <div className="rounded-xl border border-red-400/15 bg-red-400/[0.03] p-3 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <AlertTriangle className="h-3.5 w-3.5 text-red-400/60" />
+                      <p className="text-[10px] text-red-400/50 uppercase tracking-wider font-medium">Error</p>
+                    </div>
+                    <p className="text-[11px] text-red-300/50 leading-relaxed">{error}</p>
+                  </div>
+                )}
+                {!isThinking && questionText && !error && (
                   <div className="rounded-xl border border-cyan-400/10 bg-cyan-400/[0.03] p-3 space-y-2">
                     <p className="text-[10px] text-cyan-400/50 uppercase tracking-wider font-medium">Question</p>
                     <p className="text-xs text-white/70 leading-relaxed whitespace-pre-wrap">{questionText}</p>
@@ -186,10 +211,6 @@ export default function CodePractice({ isOpen, onClose }) {
                         {question.code}
                       </pre>
                     )}
-                  </div>
-                ) : (
-                  <div className="flex items-center justify-center h-32 text-white/20 text-xs">
-                    {isThinking ? 'Generating question...' : 'No active question'}
                   </div>
                 )}
 

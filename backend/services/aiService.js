@@ -354,9 +354,11 @@ Vary the question - do not use generic or repeated patterns. Be specific and pra
       let parsed;
       try {
         const text = String(raw).trim();
-        const start = text.indexOf("{");
-        const end = text.lastIndexOf("}");
-        parsed = JSON.parse(text.slice(start, end + 1));
+        const cleaned = text.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
+        const start = cleaned.indexOf("{");
+        const end = cleaned.lastIndexOf("}");
+        if (start === -1 || end === -1 || end <= start) throw new Error("no JSON object found");
+        parsed = JSON.parse(cleaned.slice(start, end + 1));
       } catch {
         return {
           question: String(raw || "Describe a coding concept."),
@@ -429,17 +431,24 @@ ${learnerContext ? `Learner: ${learnerContext}` : ""}`;
       let parsed;
       try {
         const text = String(raw).trim();
-        const start = text.indexOf("{");
-        const end = text.lastIndexOf("}");
-        parsed = JSON.parse(text.slice(start, end + 1));
+        // Strip markdown code fences (```json ... ```)
+        const cleaned = text.replace(/^```(?:json)?\s*\n?/i, '').replace(/\n?```\s*$/i, '').trim();
+        const start = cleaned.indexOf("{");
+        const end = cleaned.lastIndexOf("}");
+        if (start === -1 || end === -1 || end <= start) throw new Error("no JSON object found");
+        parsed = JSON.parse(cleaned.slice(start, end + 1));
       } catch {
-        return {
-          result: "incorrect",
-          score: 0,
-          feedback: "Could not evaluate the answer.",
-          explanation: null,
-          nextAction: "retry",
-        };
+        // Fallback: try to extract meaning from plain text response
+        const text = String(raw || "").toLowerCase();
+        let result = "incorrect";
+        let score = 0;
+        if (/\b(correct|right|perfect|well done|great job)\b/.test(text)) { result = "correct"; score = 0.85; }
+        else if (/\b(partial|close|almost|some what|partially)\b/.test(text)) { result = "partially_correct"; score = 0.5; }
+
+        const feedbackMatch = raw?.match(/(?:feedback|explanation)[:\s]*(.+)/i);
+        const feedback = feedbackMatch ? feedbackMatch[1].trim().slice(0, 500) : String(raw || "").slice(0, 500);
+
+        return { result, score, feedback, explanation: null, nextAction: result === "correct" ? "next" : "retry" };
       }
 
       return {
