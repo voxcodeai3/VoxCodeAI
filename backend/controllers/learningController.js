@@ -1,5 +1,6 @@
 const LearningSession = require("../models/LearningSession");
 const LearnerProfile = require("../models/LearnerProfile");
+const { recordSessionComplete } = require("../services/analyticsService");
 
 const MAX_QUESTIONS = 10;
 
@@ -227,6 +228,13 @@ async function completeSession(req, res) {
     session.status = action === "abandon" ? "abandoned" : "completed";
     session.completedAt = new Date();
     await session.save();
+
+    // Record analytics for completed sessions.
+    if (session.status === "completed") {
+      recordSessionComplete(req.user.id, session).catch((err) =>
+        console.error("Analytics update failed:", err.message)
+      );
+    }
 
     return res.json({ session: formatSession(session) });
   } catch (error) {

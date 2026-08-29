@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Mic, Square, LogOut, Code2 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Mic, Square, LogOut, Code2, BarChart3 } from 'lucide-react';
 import VoiceWeave from '../components/voice/VoiceWeave';
 import HorizontalWaveform from '../components/voice/HorizontalWaveform';
 import StarField from '../components/voice/StarField';
@@ -71,6 +72,7 @@ function HoloRings({ active }) {
 
 export default function VoxCode() {
   const { logout } = useAuth();
+  const navigate = useNavigate();
   const [isWorkspaceOpen, setIsWorkspaceOpen] = useState(false);
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
   const {
@@ -326,8 +328,8 @@ export default function VoxCode() {
 
       {!isWorkspaceOpen && <TextConsole />}
 
-      {/* Coding workspace toggle — bottom-left */}
-      <div className="absolute bottom-4 left-4 z-30">
+      {/* Bottom-left buttons */}
+      <div className="absolute bottom-4 left-4 z-30 flex items-center gap-2">
         <button
           type="button"
           onClick={() => setIsWorkspaceOpen(true)}
@@ -335,6 +337,14 @@ export default function VoxCode() {
         >
           <Code2 className="h-3 w-3" />
           <span>CODE</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => navigate('/learning')}
+          className="flex items-center gap-2 rounded-xl border border-white/[0.06] bg-white/[0.02] px-3 py-2 text-[10px] text-white/30 hover:text-white/50 hover:border-white/[0.1] transition-all"
+        >
+          <BarChart3 className="h-3 w-3" />
+          <span>PROGRESS</span>
         </button>
       </div>
 

@@ -2,6 +2,7 @@ const InterviewSession = require("../models/InterviewSession");
 const LearnerProfile = require("../models/LearnerProfile");
 const { buildLearnerContext } = require("../services/memoryService");
 const interviewService = require("../services/interviewService");
+const { recordInterviewComplete } = require("../services/analyticsService");
 
 const INTERVIEW_TYPES = [
   "frontend", "backend", "fullstack", "javascript", "react",
@@ -360,6 +361,11 @@ async function completeInterview(req, res) {
     });
 
     await session.save();
+
+    // Record analytics for completed interviews.
+    recordInterviewComplete(req.user.id, session).catch((err) =>
+      console.error("Analytics update failed:", err.message)
+    );
 
     // Update learner memory with interview performance.
     if (profile) {

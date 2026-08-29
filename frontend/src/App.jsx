@@ -10,6 +10,7 @@ import { AIProvider } from './context/AIContext'
 import Signup from './pages/Signup'
 import Login from './pages/Login'
 import VoxCode from './pages/VoxCode'
+import LearningDashboard from './pages/LearningDashboard'
 import OAuthCallback from './pages/OAuthCallback'
 import AuthLoading from './components/AuthLoading'
 
@@ -66,6 +67,14 @@ function App() {
             element={
               <ProtectedRoute>
                 <VoxCode />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/learning"
+            element={
+              <ProtectedRoute>
+                <LearningDashboard />
               </ProtectedRoute>
             }
           />
