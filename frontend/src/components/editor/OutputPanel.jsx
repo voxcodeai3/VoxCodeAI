@@ -1,8 +1,8 @@
 import { useState } from 'react';
-import { Terminal, Copy, Check, ChevronDown, ChevronUp } from 'lucide-react';
+import { Terminal, Copy, Check, ChevronDown, ChevronUp, ArrowDownToLine, Replace } from 'lucide-react';
 import { useAI } from '../../context/AIContext';
 
-export default function OutputPanel() {
+export default function OutputPanel({ onInsertCode, onReplaceCode }) {
   const { messages } = useAI();
   const [copied, setCopied] = useState(false);
   const [expanded, setExpanded] = useState(true);
@@ -40,6 +40,26 @@ export default function OutputPanel() {
           </span>
         </div>
         <div className="flex items-center gap-1">
+          {hasCode && onReplaceCode && (
+            <button
+              type="button"
+              onClick={() => onReplaceCode(lastAiMessage.code)}
+              className="rounded p-1 text-violet-400/50 hover:text-violet-300 transition-colors"
+              title="Replace file content"
+            >
+              <Replace className="h-3 w-3" />
+            </button>
+          )}
+          {hasCode && onInsertCode && (
+            <button
+              type="button"
+              onClick={() => onInsertCode(lastAiMessage.code)}
+              className="rounded p-1 text-emerald-400/50 hover:text-emerald-300 transition-colors"
+              title="Insert at cursor"
+            >
+              <ArrowDownToLine className="h-3 w-3" />
+            </button>
+          )}
           <button
             type="button"
             onClick={handleCopy}

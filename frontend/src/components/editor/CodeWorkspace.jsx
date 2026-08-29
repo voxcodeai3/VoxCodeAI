@@ -1,5 +1,5 @@
 import { useState, useCallback, useRef } from 'react';
-import { X, PanelLeftClose, PanelLeft, Code2 } from 'lucide-react';
+import { X, PanelLeftClose, PanelLeft, Code2, Send, Sparkles } from 'lucide-react';
 import { useCodingWorkspace } from '../../context/CodingWorkspaceContext';
 import { useAI } from '../../context/AIContext';
 import CodeEditor from './CodeEditor';
@@ -26,19 +26,26 @@ export default function CodeWorkspace({ isOpen, onClose }) {
   const [pendingCode, setPendingCode] = useState(null);
   const [mobileTab, setMobileTab] = useState('code'); // 'files' | 'code' | 'ai'
   const [outputExpanded, setOutputExpanded] = useState(false);
+  const [generateInput, setGenerateInput] = useState('');
+  const [showGenerateInput, setShowGenerateInput] = useState(false);
 
   const editorRef = useRef(null);
+  const generateInputRef = useRef(null);
 
   const handleAction = useCallback((actionId) => {
     const code = selectedCode || activeFileData?.content || '';
     const lang = activeFileData?.language || 'javascript';
     const filename = activeFile || 'untitled';
 
+    // Generate shows an input for the user to describe what they want.
+    if (actionId === 'generate') {
+      setShowGenerateInput(true);
+      setTimeout(() => generateInputRef.current?.focus(), 50);
+      return;
+    }
+
     let prompt = '';
     switch (actionId) {
-      case 'generate':
-        prompt = `Generate code for a ${lang} file. Context: ${filename}. ${selectedCode ? `Selected code for reference:\n${selectedCode}` : 'File is currently empty or the user wants a new implementation.'}`;
-        break;
       case 'explain':
         prompt = selectedCode
           ? `Explain this code:\n\`\`\`${lang}\n${selectedCode}\n\`\`\``
@@ -63,9 +70,28 @@ export default function CodeWorkspace({ isOpen, onClose }) {
         return;
     }
 
-    // Send via the existing AI system — it goes through the failover loop.
     sendMessage(prompt, 'text');
   }, [selectedCode, activeFileData, activeFile, sendMessage]);
+
+  const handleGenerateSubmit = useCallback(() => {
+    const description = generateInput.trim();
+    if (!description) return;
+    const lang = activeFileData?.language || 'javascript';
+    const filename = activeFile || 'untitled';
+    const code = activeFileData?.content || '';
+
+    let prompt = `Generate ${lang} code for: ${description}\n\nFile: ${filename}`;
+    if (code.trim()) {
+      prompt += `\nCurrent file content:\n\`\`\`${lang}\n${code}\n\`\`\``;
+    } else {
+      prompt += `\nThe file is empty — create a complete implementation.`;
+    }
+    prompt += `\n\nReturn ONLY the code inside a code block. No explanation needed.`;
+
+    setShowGenerateInput(false);
+    setGenerateInput('');
+    sendMessage(prompt, 'text');
+  }, [generateInput, activeFileData, activeFile, sendMessage]);
 
   const handleEditorSelect = useCallback((text) => {
     setSelectedCode(text);
@@ -171,6 +197,40 @@ export default function CodeWorkspace({ isOpen, onClose }) {
             selectedCode={selectedCode}
           />
 
+          {/* Generate prompt input */}
+          {showGenerateInput && (
+            <div className="flex items-center gap-2 px-3 py-2 border-b border-violet-400/15 bg-violet-400/[0.03]">
+              <Sparkles className="h-3.5 w-3.5 text-violet-400/50 shrink-0" />
+              <input
+                ref={generateInputRef}
+                type="text"
+                value={generateInput}
+                onChange={(e) => setGenerateInput(e.target.value)}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') handleGenerateSubmit();
+                  if (e.key === 'Escape') { setShowGenerateInput(false); setGenerateInput(''); }
+                }}
+                placeholder="Describe what to generate, e.g. 'a REST API with Express routes for users'"
+                className="flex-1 bg-transparent text-xs text-white/70 placeholder-white/20 outline-none"
+              />
+              <button
+                type="button"
+                onClick={handleGenerateSubmit}
+                disabled={!generateInput.trim() || isThinking}
+                className="rounded-lg px-2.5 py-1 text-[10px] bg-violet-400/10 text-violet-300 border border-violet-400/20 hover:bg-violet-400/20 transition-all disabled:opacity-30"
+              >
+                <Send className="h-3 w-3" />
+              </button>
+              <button
+                type="button"
+                onClick={() => { setShowGenerateInput(false); setGenerateInput(''); }}
+                className="text-[10px] text-white/20 hover:text-white/40 transition-colors"
+              >
+                ESC
+              </button>
+            </div>
+          )}
+
           {/* Editor */}
           <div className="flex-1 min-h-0">
             {activeFileData ? (
@@ -206,7 +266,15 @@ export default function CodeWorkspace({ isOpen, onClose }) {
         <div className={`w-72 border-l border-white/[0.04] bg-[#080d1a] shrink-0 ${
           mobileTab !== 'ai' ? 'hidden lg:block' : 'flex-1'
         }`}>
-          <OutputPanel />
+          <OutputPanel
+            onInsertCode={(code) => {
+              const current = activeFileData?.content || '';
+              updateFileContent(activeFile, current + '\n' + code);
+            }}
+            onReplaceCode={(code) => {
+              updateFileContent(activeFile, code);
+            }}
+          />
         </div>
       </div>
 
