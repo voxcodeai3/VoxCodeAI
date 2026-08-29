@@ -1,9 +1,10 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { X, PanelLeftClose, PanelLeft, Code2, Send, Sparkles, Volume2, VolumeX, CheckCircle, AlertTriangle, Loader2 } from 'lucide-react';
+import { X, PanelLeftClose, PanelLeft, Code2, Send, Sparkles, Volume2, VolumeX, CheckCircle, AlertTriangle, Loader2, History } from 'lucide-react';
 import { useCodingWorkspace } from '../../context/CodingWorkspaceContext';
 import { useAI } from '../../context/AIContext';
 import { useVoice } from '../../context/VoiceContext';
 import { useProject } from '../../context/ProjectContext';
+import { useVersions } from '../../context/VersionContext';
 import CodeEditor from './CodeEditor';
 import FileTabs from './FileTabs';
 import FileExplorer from './FileExplorer';
@@ -12,6 +13,7 @@ import OutputPanel from './OutputPanel';
 import CodeDiff from './CodeDiff';
 import NewFileDialog from './NewFileDialog';
 import InsertOptionsDialog from './InsertOptionsDialog';
+import VersionHistoryPanel from './VersionHistoryPanel';
 
 export default function CodeWorkspace({ isOpen, onClose }) {
   const {
@@ -20,7 +22,8 @@ export default function CodeWorkspace({ isOpen, onClose }) {
   } = useCodingWorkspace();
   const { sendMessage, isThinking } = useAI();
   const { voiceEnabled, toggleVoice } = useVoice();
-  const { currentProject, saveStatus, conflict, resolveConflict, updateFiles, addFile, removeFile, renameFile, setActiveFile: setProjectActiveFile } = useProject();
+  const { currentProject, saveStatus, conflict, resolveConflict, updateFiles, addFile, removeFile, renameFile, setActiveFile: setProjectActiveFile, saveProject } = useProject();
+  const { fetchVersions } = useVersions();
 
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [newFileOpen, setNewFileOpen] = useState(false);
@@ -32,6 +35,7 @@ export default function CodeWorkspace({ isOpen, onClose }) {
   const [outputExpanded, setOutputExpanded] = useState(false);
   const [generateInput, setGenerateInput] = useState('');
   const [showGenerateInput, setShowGenerateInput] = useState(false);
+  const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
 
   const editorRef = useRef(null);
   const generateInputRef = useRef(null);
@@ -129,6 +133,19 @@ export default function CodeWorkspace({ isOpen, onClose }) {
     setNewFileOpen(true);
   }, []);
 
+  const handleRestoreVersion = useCallback(async (restoredProject) => {
+    if (restoredProject?.files) {
+      const restoredFiles = {};
+      for (const f of restoredProject.files) {
+        restoredFiles[f.path] = { content: f.content, language: f.language };
+      }
+      updateFiles(restoredFiles, restoredProject.activeFile);
+    }
+    if (restoredProject?._id) {
+      fetchVersions(restoredProject._id);
+    }
+  }, [updateFiles, fetchVersions]);
+
   if (!isOpen) return null;
 
   return (
@@ -171,6 +188,16 @@ export default function CodeWorkspace({ isOpen, onClose }) {
           )}
         </div>
         <div className="flex items-center gap-1.5">
+          {currentProject && (
+            <button
+              type="button"
+              onClick={() => setVersionHistoryOpen(true)}
+              className="rounded-lg p-1.5 text-white/30 hover:text-cyan-300 transition-colors"
+              title="Version History"
+            >
+              <History className="h-4 w-4" />
+            </button>
+          )}
           <button
             type="button"
             onClick={toggleVoice}
@@ -352,6 +379,16 @@ export default function CodeWorkspace({ isOpen, onClose }) {
             </div>
           </div>
         </div>
+      )}
+
+      {/* Version History Panel */}
+      {currentProject && (
+        <VersionHistoryPanel
+          isOpen={versionHistoryOpen}
+          onClose={() => setVersionHistoryOpen(false)}
+          projectId={currentProject._id}
+          onRestore={handleRestoreVersion}
+        />
       )}
     </div>
   );

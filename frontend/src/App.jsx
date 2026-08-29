@@ -8,6 +8,7 @@ import { LearningProvider } from './context/LearningContext'
 import { InterviewProvider } from './context/InterviewContext'
 import { AIProvider } from './context/AIContext'
 import { ProjectProvider } from './context/ProjectContext'
+import { VersionProvider } from './context/VersionContext'
 import Signup from './pages/Signup'
 import Login from './pages/Login'
 import VoxCode from './pages/VoxCode'
@@ -48,6 +49,7 @@ function App() {
                 <AIProvider>
                   <InterviewProvider>
               <ProjectProvider>
+              <VersionProvider>
               <Routes>
           <Route
             path="/signup"
@@ -92,6 +94,7 @@ function App() {
           />
           <Route path="*" element={<HomeRedirect />} />
               </Routes>
+              </VersionProvider>
               </ProjectProvider>
                   </InterviewProvider>
                 </AIProvider>

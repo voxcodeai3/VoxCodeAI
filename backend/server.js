@@ -10,6 +10,7 @@ const learningRoutes = require("./routes/learningRoutes");
 const interviewRoutes = require("./routes/interviewRoutes");
 const analyticsRoutes = require("./routes/analyticsRoutes");
 const projectRoutes = require("./routes/projectRoutes");
+const versionRoutes = require("./routes/versionRoutes");
 
 const app = express();
 
@@ -39,6 +40,9 @@ app.use("/api/interviews", interviewRoutes);
 
 // Learning analytics routes (JWT protected)
 app.use("/api/analytics", analyticsRoutes);
+
+// Project version routes (JWT protected) — must be before project routes
+app.use("/api/projects", versionRoutes);
 
 // Project management routes (JWT protected)
 app.use("/api/projects", projectRoutes);
