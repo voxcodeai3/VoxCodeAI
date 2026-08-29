@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { Mic, Square, LogOut, Code2, BarChart3 } from 'lucide-react';
 import VoiceWeave from '../components/voice/VoiceWeave';
@@ -90,14 +90,16 @@ export default function VoxCode() {
   const { activeAction, triggerQuickAction } = useAI();
   const { interviewState, viewInterview } = useInterview();
   const [searchParams] = useSearchParams();
+  const actionProcessedRef = useRef(false);
 
   useEffect(() => {
     const action = searchParams.get('action');
-    if (action === 'practice' || action === 'quiz') {
+    if ((action === 'practice' || action === 'quiz') && !actionProcessedRef.current) {
+      actionProcessedRef.current = true;
       triggerQuickAction(action);
-      window.history.replaceState({}, '', '/voxcode');
+      navigate('/voxcode', { replace: true });
     }
-  }, [searchParams, triggerQuickAction]);
+  }, [searchParams, triggerQuickAction, navigate]);
 
   const isInInterview = interviewState && interviewState !== 'idle';
   const baseMap = isInInterview ? INTERVIEW_STATUS_MAP : STATUS_MAP;
