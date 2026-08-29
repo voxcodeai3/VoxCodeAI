@@ -18,6 +18,15 @@ function detectLanguage(filename) {
 
 const DIFFICULTIES = ['easy', 'medium', 'hard'];
 const TOPICS = ['javascript', 'react', 'node', 'python', 'data_structures', 'algorithms', 'general'];
+const LANGUAGES = [
+  { id: 'javascript', label: 'JS' },
+  { id: 'typescript', label: 'TS' },
+  { id: 'python', label: 'Python' },
+  { id: 'java', label: 'Java' },
+  { id: 'cpp', label: 'C++' },
+  { id: 'go', label: 'Go' },
+  { id: 'rust', label: 'Rust' },
+];
 
 export default function CodePractice({ isOpen, onClose }) {
   const { practiceState, sendPracticeMessage, clearPractice, isThinking } = useAI();
@@ -307,20 +316,21 @@ export default function CodePractice({ isOpen, onClose }) {
 
             {/* Right: Monaco editor */}
             <div className="flex-1 flex flex-col overflow-hidden">
-              <div className="flex items-center gap-2 px-4 py-2 border-b border-cyan-400/10">
-                <select
-                  value={language}
-                  onChange={(e) => setLanguage(e.target.value)}
-                  className="bg-white/[0.04] border border-white/[0.08] rounded-lg px-2 py-1 text-[10px] text-white/50 outline-none"
-                >
-                  <option value="javascript">JavaScript</option>
-                  <option value="typescript">TypeScript</option>
-                  <option value="python">Python</option>
-                  <option value="java">Java</option>
-                  <option value="cpp">C++</option>
-                  <option value="go">Go</option>
-                  <option value="rust">Rust</option>
-                </select>
+              <div className="flex items-center gap-1 px-4 py-2 border-b border-cyan-400/10">
+                {LANGUAGES.map((l) => (
+                  <button
+                    key={l.id}
+                    type="button"
+                    onClick={() => setLanguage(l.id)}
+                    className={`rounded-lg px-2.5 py-1 text-[10px] border transition-all ${
+                      language === l.id
+                        ? 'border-cyan-400/30 bg-cyan-400/10 text-cyan-300'
+                        : 'border-white/[0.06] bg-white/[0.02] text-white/30 hover:text-white/50 hover:bg-white/[0.04]'
+                    }`}
+                  >
+                    {l.label}
+                  </button>
+                ))}
               </div>
               <div className="flex-1">
                 <Editor
