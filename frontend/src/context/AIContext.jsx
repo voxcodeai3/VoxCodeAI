@@ -385,6 +385,7 @@ export function AIProvider({ children }) {
   const clearOpenPractice = useCallback(() => {
     setOpenPractice(false);
     setPracticeMode(null);
+    setActiveAction(null);
   }, []);
 
   // Load a specific conversation from history (called from TextConsole after ConversationContext loads it).
