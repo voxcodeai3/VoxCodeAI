@@ -134,31 +134,42 @@ export default function LearningDashboard() {
   // Empty state for new users.
   if (!data || data.overview.totalSessions === 0) {
     return (
-      <div className="flex flex-col items-center justify-center h-full p-6 text-center space-y-6">
-        <div className="h-16 w-16 rounded-full border border-cyan-400/15 bg-cyan-400/[0.03] flex items-center justify-center">
-          <BarChart3 className="h-8 w-8 text-cyan-400/30" />
-        </div>
-        <div className="space-y-2 max-w-sm">
-          <h2 className="text-sm font-semibold text-white/70">Welcome to Your Learning Journey</h2>
-          <p className="text-xs text-white/30 leading-relaxed">
-            You haven't completed enough learning sessions to generate meaningful progress data yet.
-          </p>
-        </div>
-        <div className="flex gap-2">
+      <div className="flex flex-col h-full">
+        <div className="flex items-center justify-between px-4 py-3 border-b border-white/5">
           <button
             type="button"
             onClick={() => navigate('/voxcode')}
-            className="flex items-center gap-1.5 rounded-xl border border-cyan-400/20 bg-cyan-400/[0.06] px-4 py-2 text-[11px] text-cyan-300 hover:bg-cyan-400/[0.12] transition-all"
+            className="flex items-center gap-1.5 text-[11px] text-white/30 hover:text-white/60 transition-colors"
           >
-            <Play className="h-3 w-3" /> Start Practicing
+            <ChevronLeft className="h-3 w-3" /> Back
           </button>
-          <button
-            type="button"
-            onClick={() => navigate('/voxcode')}
-            className="flex items-center gap-1.5 rounded-xl border border-violet-400/20 bg-violet-400/[0.06] px-4 py-2 text-[11px] text-violet-300 hover:bg-violet-400/[0.12] transition-all"
-          >
-            <Target className="h-3 w-3" /> Take a Quiz
-          </button>
+        </div>
+        <div className="flex flex-col items-center justify-center flex-1 p-6 text-center space-y-6">
+          <div className="h-16 w-16 rounded-full border border-cyan-400/15 bg-cyan-400/[0.03] flex items-center justify-center">
+            <BarChart3 className="h-8 w-8 text-cyan-400/30" />
+          </div>
+          <div className="space-y-2 max-w-sm">
+            <h2 className="text-sm font-semibold text-white/70">Welcome to Your Learning Journey</h2>
+            <p className="text-xs text-white/30 leading-relaxed">
+              You haven't completed enough learning sessions to generate meaningful progress data yet.
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <button
+              type="button"
+              onClick={() => navigate('/voxcode')}
+              className="flex items-center gap-1.5 rounded-xl border border-cyan-400/20 bg-cyan-400/[0.06] px-4 py-2 text-[11px] text-cyan-300 hover:bg-cyan-400/[0.12] transition-all"
+            >
+              <Play className="h-3 w-3" /> Start Practicing
+            </button>
+            <button
+              type="button"
+              onClick={() => navigate('/voxcode')}
+              className="flex items-center gap-1.5 rounded-xl border border-violet-400/20 bg-violet-400/[0.06] px-4 py-2 text-[11px] text-violet-300 hover:bg-violet-400/[0.12] transition-all"
+            >
+              <Target className="h-3 w-3" /> Take a Quiz
+            </button>
+          </div>
         </div>
       </div>
     );
