@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { useNavigate } from 'react-router-dom';
 import Editor from '@monaco-editor/react';
 import { X, Play, Lightbulb, RotateCcw, CheckCircle, AlertTriangle, Loader2 } from 'lucide-react';
@@ -39,11 +39,15 @@ export default function CodePractice({ isOpen, onClose, mode = 'practice' }) {
   const [hintIndex, setHintIndex] = useState(0);
   const [showConfig, setShowConfig] = useState(true);
   const [error, setError] = useState(null);
+  const modeRef = useRef(mode);
 
   useEffect(() => {
     if (!isOpen) return;
+    if (mode) modeRef.current = mode;
     setCode('// Write your code here\n');
     setHintIndex(0);
+    setShowConfig(true);
+    setError(null);
   }, [isOpen]);
 
   const handleGenerate = useCallback(async () => {
@@ -112,7 +116,7 @@ export default function CodePractice({ isOpen, onClose, mode = 'practice' }) {
               <Play className="h-4 w-4 text-cyan-300" />
             </div>
             <div>
-              <p className="text-sm font-semibold text-white">{mode === 'quiz' ? 'QUIZ' : 'PRACTICE'}</p>
+              <p className="text-sm font-semibold text-white">{modeRef.current === 'quiz' ? 'QUIZ' : 'PRACTICE'}</p>
               <p className="text-[10px] text-cyan-400/40">
                 {showConfig ? 'Configure your session' : `${topic} · ${difficulty}`}
               </p>
@@ -189,7 +193,7 @@ export default function CodePractice({ isOpen, onClose, mode = 'practice' }) {
                     <Loader2 className="h-4 w-4 animate-spin" /> Generating...
                   </span>
                 ) : (
-                  mode === 'quiz' ? 'Start Quiz' : 'Start Practice'
+                  modeRef.current === 'quiz' ? 'Start Quiz' : 'Start Practice'
                 )}
               </button>
             </div>
@@ -235,7 +239,7 @@ export default function CodePractice({ isOpen, onClose, mode = 'practice' }) {
                 )}
 
                 {/* Hints (practice mode only) */}
-                {mode !== 'quiz' && hints.length > 0 && (
+                {modeRef.current !== 'quiz' && hints.length > 0 && (
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <p className="text-[10px] text-amber-400/50 uppercase tracking-wider font-medium flex items-center gap-1.5">
