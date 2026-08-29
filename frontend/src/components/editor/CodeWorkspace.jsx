@@ -47,23 +47,23 @@ export default function CodeWorkspace({ isOpen, onClose }) {
     let prompt = '';
     switch (actionId) {
       case 'explain':
-        prompt = selectedCode
-          ? `Explain this code:\n\`\`\`${lang}\n${selectedCode}\n\`\`\``
+        prompt = code
+          ? `Explain this code:\n\`\`\`${lang}\n${code}\n\`\`\``
           : `Explain the code in ${filename}.`;
         break;
       case 'debug':
-        prompt = selectedCode
-          ? `Debug this code:\n\`\`\`${lang}\n${selectedCode}\n\`\`\``
+        prompt = code
+          ? `Debug this code:\n\`\`\`${lang}\n${code}\n\`\`\``
           : `Debug the code in ${filename}.`;
         break;
       case 'refactor':
-        prompt = selectedCode
-          ? `Refactor this code to be cleaner and more efficient:\n\`\`\`${lang}\n${selectedCode}\n\`\`\``
+        prompt = code
+          ? `Refactor this code to be cleaner and more efficient:\n\`\`\`${lang}\n${code}\n\`\`\``
           : `Refactor the code in ${filename}.`;
         break;
       case 'document':
-        prompt = selectedCode
-          ? `Add documentation comments to this code:\n\`\`\`${lang}\n${selectedCode}\n\`\`\``
+        prompt = code
+          ? `Add documentation comments to this code:\n\`\`\`${lang}\n${code}\n\`\`\``
           : `Add documentation to the code in ${filename}.`;
         break;
       default:
