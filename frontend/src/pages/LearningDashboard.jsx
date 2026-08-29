@@ -1,7 +1,8 @@
 import { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router-dom';
 import {
   Flame, Clock, Target, TrendingUp, Zap, BookOpen, Code2, Mic,
-  ChevronRight, Play, Trophy, AlertTriangle, CheckCircle, BarChart3,
+  ChevronRight, ChevronLeft, Play, Trophy, AlertTriangle, CheckCircle, BarChart3,
   RefreshCw, ArrowRight,
 } from 'lucide-react';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, AreaChart, Area } from 'recharts';
@@ -77,6 +78,7 @@ function Section({ title, icon: Icon, children, className = '' }) {
 }
 
 export default function LearningDashboard({ onNavigate }) {
+  const navigate = useNavigate();
   const [data, setData] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
@@ -88,7 +90,8 @@ export default function LearningDashboard({ onNavigate }) {
         const res = await api.get('/analytics');
         if (!cancelled) setData(res.data);
       } catch (err) {
-        if (!cancelled) setError(err.response?.data?.message || 'Failed to load analytics.');
+        console.error('Analytics load error:', err);
+        if (!cancelled) setError(err.response?.data?.message || err.message || 'Failed to load analytics.');
       } finally {
         if (!cancelled) setLoading(false);
       }
@@ -174,9 +177,18 @@ export default function LearningDashboard({ onNavigate }) {
     <div className="h-full overflow-y-auto p-4 md:p-6 space-y-4 md:space-y-6 max-w-5xl mx-auto">
       {/* Header */}
       <div className="flex items-center justify-between">
-        <div>
-          <h1 className="text-sm font-semibold text-white/80">Learning Progress</h1>
-          <p className="text-[10px] text-white/25 mt-0.5">Your personalized analytics</p>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => navigate('/voxcode')}
+            className="rounded-lg p-1.5 text-white/30 hover:text-white/60 transition-colors"
+          >
+            <ChevronLeft className="h-4 w-4" />
+          </button>
+          <div>
+            <h1 className="text-sm font-semibold text-white/80">Learning Progress</h1>
+            <p className="text-[10px] text-white/25 mt-0.5">Your personalized analytics</p>
+          </div>
         </div>
         <button
           type="button"

@@ -110,7 +110,7 @@ learningAnalyticsSchema.statics.findOrCreate = async function (userId) {
   if (!analytics) {
     analytics = await this.create({ user: userId });
   }
-  return learningAnalyticsSchema.statics.findByUser(userId);
+  return this.findOne({ user: userId });
 };
 
 module.exports = mongoose.model("LearningAnalytics", learningAnalyticsSchema);
