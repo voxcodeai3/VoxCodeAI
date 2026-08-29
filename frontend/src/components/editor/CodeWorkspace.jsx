@@ -1,7 +1,8 @@
 import { useState, useCallback, useRef } from 'react';
-import { X, PanelLeftClose, PanelLeft, Code2, Send, Sparkles } from 'lucide-react';
+import { X, PanelLeftClose, PanelLeft, Code2, Send, Sparkles, Volume2, VolumeX } from 'lucide-react';
 import { useCodingWorkspace } from '../../context/CodingWorkspaceContext';
 import { useAI } from '../../context/AIContext';
+import { useVoice } from '../../context/VoiceContext';
 import CodeEditor from './CodeEditor';
 import FileTabs from './FileTabs';
 import FileExplorer from './FileExplorer';
@@ -17,6 +18,7 @@ export default function CodeWorkspace({ isOpen, onClose }) {
     updateFileContent, createFile, renameActiveFile,
   } = useCodingWorkspace();
   const { sendMessage, isThinking } = useAI();
+  const { voiceEnabled, toggleVoice } = useVoice();
 
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [newFileOpen, setNewFileOpen] = useState(false);
@@ -147,14 +149,24 @@ export default function CodeWorkspace({ isOpen, onClose }) {
             {fileList.length} file{fileList.length !== 1 ? 's' : ''}
           </span>
         </div>
-        <button
-          type="button"
-          onClick={onClose}
-          className="rounded-lg p-1.5 text-white/30 hover:text-red-400 transition-colors"
-          aria-label="Close workspace"
-        >
-          <X className="h-4 w-4" />
-        </button>
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={toggleVoice}
+            className="rounded-lg p-1.5 text-white/30 hover:text-white/60 transition-colors"
+            title={voiceEnabled ? 'Mute voice' : 'Unmute voice'}
+          >
+            {voiceEnabled ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
+          </button>
+          <button
+            type="button"
+            onClick={onClose}
+            className="rounded-lg p-1.5 text-white/30 hover:text-red-400 transition-colors"
+            aria-label="Close workspace"
+          >
+            <X className="h-4 w-4" />
+          </button>
+        </div>
       </div>
 
       {/* Mobile tab bar */}

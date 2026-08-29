@@ -35,6 +35,7 @@ export function VoiceProvider({ children }) {
   const [transcript, setTranscript] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
   const [spokenMessageId, setSpokenMessageId] = useState(null);
+  const [voiceEnabled, setVoiceEnabled] = useState(true);
 
   // recognition session refs
   const recognizerRef = useRef(null);
@@ -247,6 +248,7 @@ export function VoiceProvider({ children }) {
   // ── text-to-speech lifecycle ────────────────────────────────────────────
 
   const speakResponse = useCallback((text, messageId = null) => {
+    if (!voiceEnabled) return; // muted — skip speech
     const content = (text || '').trim();
     if (!content) {
       setInteractionState('idle');
@@ -265,12 +267,19 @@ export function VoiceProvider({ children }) {
         setInteractionState((s) => (s === 'speaking' ? 'idle' : s));
       },
     });
-  }, []);
+  }, [voiceEnabled]);
 
   const stopSpeaking = useCallback(() => {
     tts.stop();
     setSpokenMessageId(null);
     setInteractionState((s) => (s === 'speaking' ? 'idle' : s));
+  }, []);
+
+  const toggleVoice = useCallback(() => {
+    setVoiceEnabled((prev) => {
+      if (prev) tts.stop(); // turning off — stop any current speech
+      return !prev;
+    });
   }, []);
 
   // ── state transitions driven by AIContext ───────────────────────────────
@@ -320,6 +329,7 @@ export function VoiceProvider({ children }) {
       transcript,
       errorMessage,
       spokenMessageId,
+      voiceEnabled,
       frequencyData: freqDataRef.current, // stable buffer, mutated per frame
       support: {
         speech: isSpeechRecognitionSupported(),
@@ -330,6 +340,7 @@ export function VoiceProvider({ children }) {
       stopListening,
       speakResponse,
       stopSpeaking,
+      toggleVoice,
       setThinking,
       setIdle,
       setFinalTranscriptHandler,
@@ -339,10 +350,12 @@ export function VoiceProvider({ children }) {
     transcript,
     errorMessage,
     spokenMessageId,
+    voiceEnabled,
     startListening,
     stopListening,
     speakResponse,
     stopSpeaking,
+    toggleVoice,
     setThinking,
     setIdle,
     setFinalTranscriptHandler,
