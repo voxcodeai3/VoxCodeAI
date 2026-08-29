@@ -7,10 +7,12 @@ import { CodingWorkspaceProvider } from './context/CodingWorkspaceContext'
 import { LearningProvider } from './context/LearningContext'
 import { InterviewProvider } from './context/InterviewContext'
 import { AIProvider } from './context/AIContext'
+import { ProjectProvider } from './context/ProjectContext'
 import Signup from './pages/Signup'
 import Login from './pages/Login'
 import VoxCode from './pages/VoxCode'
 import LearningDashboard from './pages/LearningDashboard'
+import Projects from './pages/Projects'
 import OAuthCallback from './pages/OAuthCallback'
 import AuthLoading from './components/AuthLoading'
 
@@ -45,6 +47,7 @@ function App() {
               <LearningProvider>
                 <AIProvider>
                   <InterviewProvider>
+              <ProjectProvider>
               <Routes>
           <Route
             path="/signup"
@@ -79,8 +82,17 @@ function App() {
             }
           />
           <Route path="/oauth/callback" element={<OAuthCallback />} />
+          <Route
+            path="/projects"
+            element={
+              <ProtectedRoute>
+                <Projects />
+              </ProtectedRoute>
+            }
+          />
           <Route path="*" element={<HomeRedirect />} />
               </Routes>
+              </ProjectProvider>
                   </InterviewProvider>
                 </AIProvider>
               </LearningProvider>

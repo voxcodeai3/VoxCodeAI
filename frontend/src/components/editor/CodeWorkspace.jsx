@@ -1,8 +1,9 @@
-import { useState, useCallback, useRef } from 'react';
-import { X, PanelLeftClose, PanelLeft, Code2, Send, Sparkles, Volume2, VolumeX } from 'lucide-react';
+import { useState, useCallback, useRef, useEffect } from 'react';
+import { X, PanelLeftClose, PanelLeft, Code2, Send, Sparkles, Volume2, VolumeX, CheckCircle, AlertTriangle, Loader2 } from 'lucide-react';
 import { useCodingWorkspace } from '../../context/CodingWorkspaceContext';
 import { useAI } from '../../context/AIContext';
 import { useVoice } from '../../context/VoiceContext';
+import { useProject } from '../../context/ProjectContext';
 import CodeEditor from './CodeEditor';
 import FileTabs from './FileTabs';
 import FileExplorer from './FileExplorer';
@@ -19,6 +20,7 @@ export default function CodeWorkspace({ isOpen, onClose }) {
   } = useCodingWorkspace();
   const { sendMessage, isThinking } = useAI();
   const { voiceEnabled, toggleVoice } = useVoice();
+  const { currentProject, saveStatus, conflict, resolveConflict, updateFiles, addFile, removeFile, renameFile, setActiveFile: setProjectActiveFile } = useProject();
 
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [newFileOpen, setNewFileOpen] = useState(false);
@@ -143,11 +145,30 @@ export default function CodeWorkspace({ isOpen, onClose }) {
           </button>
           <div className="flex items-center gap-2">
             <Code2 className="h-4 w-4 text-cyan-300/60" />
-            <span className="text-xs font-medium text-white/70">CODING WORKSPACE</span>
+            <span className="text-xs font-medium text-white/70">
+              {currentProject ? currentProject.name : 'CODING WORKSPACE'}
+            </span>
           </div>
           <span className="text-[10px] text-white/20 hidden sm:inline">
             {fileList.length} file{fileList.length !== 1 ? 's' : ''}
           </span>
+          {currentProject && (
+            <span className={`text-[10px] flex items-center gap-1 ${
+              saveStatus === 'saved' ? 'text-emerald-400/50' :
+              saveStatus === 'saving' ? 'text-amber-400/50' :
+              saveStatus === 'unsaved' ? 'text-white/30' :
+              saveStatus === 'error' ? 'text-red-400/50' :
+              'text-white/30'
+            }`}>
+              {saveStatus === 'saving' && <Loader2 className="h-2.5 w-2.5 animate-spin" />}
+              {saveStatus === 'saved' && <CheckCircle className="h-2.5 w-2.5" />}
+              {saveStatus === 'error' && <AlertTriangle className="h-2.5 w-2.5" />}
+              {saveStatus === 'saving' ? 'Saving...' :
+               saveStatus === 'saved' ? 'Saved' :
+               saveStatus === 'unsaved' ? 'Unsaved' :
+               saveStatus === 'error' ? 'Save failed' : ''}
+            </span>
+          )}
         </div>
         <div className="flex items-center gap-1.5">
           <button
@@ -300,6 +321,38 @@ export default function CodeWorkspace({ isOpen, onClose }) {
         onCreateNew={handleCreateNewFile}
         language={activeFileData?.language}
       />
+
+      {/* Conflict UI */}
+      {conflict && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div className="absolute inset-0 bg-black/60 backdrop-blur-sm" />
+          <div className="relative w-[90vw] max-w-sm rounded-2xl border border-amber-400/15 bg-[#060c18]/95 backdrop-blur-2xl p-6 space-y-4">
+            <div className="flex items-center gap-2">
+              <AlertTriangle className="h-4 w-4 text-amber-400/60" />
+              <h2 className="text-sm font-semibold text-white/80">Project Updated Elsewhere</h2>
+            </div>
+            <p className="text-xs text-white/40">
+              This project has newer changes from another session. Choose how to proceed.
+            </p>
+            <div className="flex gap-2">
+              <button
+                type="button"
+                onClick={() => resolveConflict('keep_mine')}
+                className="flex-1 rounded-xl border border-cyan-400/20 bg-cyan-400/[0.06] px-4 py-2.5 text-[11px] text-cyan-300 hover:bg-cyan-400/[0.12] transition-all"
+              >
+                Keep My Changes
+              </button>
+              <button
+                type="button"
+                onClick={() => resolveConflict('load_latest')}
+                className="flex-1 rounded-xl border border-amber-400/20 bg-amber-400/[0.06] px-4 py-2.5 text-[11px] text-amber-300 hover:bg-amber-400/[0.12] transition-all"
+              >
+                Load Latest
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
