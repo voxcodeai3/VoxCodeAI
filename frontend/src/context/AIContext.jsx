@@ -126,6 +126,7 @@ export function AIProvider({ children }) {
   const [responseMode, setResponseMode] = useState(null);
   const [practiceState, setPracticeState] = useState(null); // { question, feedback, score, evaluation }
   const [openPractice, setOpenPractice] = useState(false); // signal to open CodePractice
+  const [practiceMode, setPracticeMode] = useState(null); // 'practice' | 'quiz'
 
   const isThinkingRef = useRef(false);
   isThinkingRef.current = isThinking;
@@ -372,6 +373,7 @@ export function AIProvider({ children }) {
       setSettings((s) => ({ ...s, teachingMode: config.teachingMode }));
       // Practice and quiz open CodePractice instead of sending a chat message.
       if (actionId === 'practice' || actionId === 'quiz') {
+        setPracticeMode(actionId);
         setOpenPractice(true);
         return;
       }
@@ -380,7 +382,10 @@ export function AIProvider({ children }) {
     [sendMessage],
   );
 
-  const clearOpenPractice = useCallback(() => setOpenPractice(false), []);
+  const clearOpenPractice = useCallback(() => {
+    setOpenPractice(false);
+    setPracticeMode(null);
+  }, []);
 
   // Load a specific conversation from history (called from TextConsole after ConversationContext loads it).
   const loadConversationMessages = useCallback(
@@ -409,6 +414,7 @@ export function AIProvider({ children }) {
       clearPractice,
       openPractice,
       clearOpenPractice,
+      practiceMode,
       retryLast,
       clearConversation,
       deleteAllConversations,
@@ -431,6 +437,7 @@ export function AIProvider({ children }) {
       clearPractice,
       openPractice,
       clearOpenPractice,
+      practiceMode,
       retryLast,
       clearConversation,
       deleteAllConversations,

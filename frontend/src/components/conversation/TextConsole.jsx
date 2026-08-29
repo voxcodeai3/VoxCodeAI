@@ -17,7 +17,7 @@ function TextConsole({ expanded = false }) {
   const [isLearningOpen, setIsLearningOpen] = useState(false);
   const [isInterviewOpen, setIsInterviewOpen] = useState(false);
   const [isPracticeOpen, setIsPracticeOpen] = useState(false);
-  const { messages, isThinking, clearConversation, loadConversationMessages, openPractice, clearOpenPractice } = useAI();
+  const { messages, isThinking, clearConversation, loadConversationMessages, openPractice, clearOpenPractice, practiceMode } = useAI();
   const { activeConversationId } = useConversations();
   const { session: activeSession } = useLearning();
   const { session: activeInterview, showResults: interviewShowResults } = useInterview();
@@ -164,6 +164,7 @@ function TextConsole({ expanded = false }) {
       <CodePractice
         isOpen={isPracticeOpen}
         onClose={() => setIsPracticeOpen(false)}
+        mode={practiceMode}
       />
       <InterviewWorkspace
         isOpen={isInterviewOpen}

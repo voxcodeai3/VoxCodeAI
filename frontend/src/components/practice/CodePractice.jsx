@@ -1,4 +1,5 @@
 import { useState, useEffect, useCallback } from 'react';
+import { useNavigate } from 'react-router-dom';
 import Editor from '@monaco-editor/react';
 import { X, Play, Lightbulb, RotateCcw, CheckCircle, AlertTriangle, Loader2 } from 'lucide-react';
 import { useAI } from '../../context/AIContext';
@@ -28,8 +29,9 @@ const LANGUAGES = [
   { id: 'rust', label: 'Rust' },
 ];
 
-export default function CodePractice({ isOpen, onClose }) {
+export default function CodePractice({ isOpen, onClose, mode = 'practice' }) {
   const { practiceState, sendPracticeMessage, clearPractice, isThinking } = useAI();
+  const navigate = useNavigate();
   const [code, setCode] = useState('// Write your code here\n');
   const [language, setLanguage] = useState('javascript');
   const [topic, setTopic] = useState('javascript');
@@ -110,19 +112,28 @@ export default function CodePractice({ isOpen, onClose }) {
               <Play className="h-4 w-4 text-cyan-300" />
             </div>
             <div>
-              <p className="text-sm font-semibold text-white">PRACTICE</p>
+              <p className="text-sm font-semibold text-white">{mode === 'quiz' ? 'QUIZ' : 'PRACTICE'}</p>
               <p className="text-[10px] text-cyan-400/40">
                 {showConfig ? 'Configure your session' : `${topic} · ${difficulty}`}
               </p>
             </div>
           </div>
-          <button
-            type="button"
-            onClick={onClose}
-            className="rounded-lg p-1.5 text-cyan-400/40 hover:text-cyan-300 hover:bg-white/[0.05] transition-colors"
-          >
-            <X className="h-4 w-4" />
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => navigate('/learning')}
+              className="rounded-lg px-2.5 py-1.5 text-[10px] text-cyan-400/40 hover:text-cyan-300 hover:bg-white/[0.05] transition-colors"
+            >
+              Dashboard
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="rounded-lg p-1.5 text-cyan-400/40 hover:text-cyan-300 hover:bg-white/[0.05] transition-colors"
+            >
+              <X className="h-4 w-4" />
+            </button>
+          </div>
         </div>
 
         {/* Config screen */}
@@ -178,7 +189,7 @@ export default function CodePractice({ isOpen, onClose }) {
                     <Loader2 className="h-4 w-4 animate-spin" /> Generating...
                   </span>
                 ) : (
-                  'Start Practice'
+                  mode === 'quiz' ? 'Start Quiz' : 'Start Practice'
                 )}
               </button>
             </div>
@@ -223,8 +234,8 @@ export default function CodePractice({ isOpen, onClose }) {
                   </div>
                 )}
 
-                {/* Hints */}
-                {hints.length > 0 && (
+                {/* Hints (practice mode only) */}
+                {mode !== 'quiz' && hints.length > 0 && (
                   <div className="space-y-2">
                     <div className="flex items-center justify-between">
                       <p className="text-[10px] text-amber-400/50 uppercase tracking-wider font-medium flex items-center gap-1.5">
