@@ -19,55 +19,50 @@ const learnerProfileSchema = new mongoose.Schema(
       unique: true,
       index: true,
     },
-    preferredLanguages: {
-      type: [String],
-      default: [],
-    },
-    experienceLevel: {
-      type: String,
-      enum: ["beginner", "intermediate", "advanced"],
-      default: null,
-    },
-    learningGoals: {
-      type: [String],
-      default: [],
-    },
-    strengths: {
-      type: [String],
-      default: [],
-    },
-    weaknesses: {
-      type: [String],
-      default: [],
-    },
-    interests: {
-      type: [String],
-      default: [],
-    },
-    preferredTeachingStyle: {
+    onboardingComplete: { type: Boolean, default: false },
+    selectedGoal: {
       type: String,
       enum: [
-        "step_by_step",
-        "socratic",
-        "example_first",
-        "concise",
-        "detailed",
-        "practice_focused",
+        "frontend", "backend", "fullstack", "mobile", "python",
+        "ai_ml", "data_science", "game_dev", "software_engineering",
+        "dsa", "programming_language", null,
       ],
       default: null,
     },
-    currentTopics: {
-      type: [String],
-      default: [],
-    },
-    topicProgress: {
-      type: [topicProgressSchema],
-      default: [],
-    },
-    conversationSummary: {
+    selectedStack: { type: String, default: null },
+    selectedTechnologies: { type: [String], default: [] },
+    experienceLevel: {
       type: String,
+      enum: ["complete_beginner", "beginner", "intermediate", "advanced"],
       default: null,
     },
+    learningGoals: { type: [String], default: [] },
+    preferredLearningStyle: {
+      type: String,
+      enum: ["explanation", "coding", "project_based", "practice_heavy", "quiz_heavy", "balanced"],
+      default: "balanced",
+    },
+    weeklyGoalHours: { type: Number, default: null },
+    preferredLanguages: { type: [String], default: [] },
+    preferredTeachingStyle: {
+      type: String,
+      enum: [
+        "step_by_step", "socratic", "example_first",
+        "concise", "detailed", "practice_focused",
+      ],
+      default: null,
+    },
+    activePath: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "LearningPath",
+      default: null,
+    },
+    currentTopics: { type: [String], default: [] },
+    strengths: { type: [String], default: [] },
+    weaknesses: { type: [String], default: [] },
+    interests: { type: [String], default: [] },
+    topicProgress: { type: [topicProgressSchema], default: [] },
+    conversationSummary: { type: String, default: null },
   },
   { timestamps: true, versionKey: false }
 );

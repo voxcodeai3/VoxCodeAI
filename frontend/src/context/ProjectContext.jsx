@@ -105,6 +105,60 @@ export function ProjectProvider({ children }) {
     }
   }, [currentProject, fetchProjects]);
 
+  const importFiles = useCallback(async (id, files) => {
+    try {
+      const formData = new FormData();
+      for (const file of files) {
+        formData.append('files', file);
+      }
+      const { data } = await api.post(`/projects/${id}/import`, formData);
+      await fetchProject(id);
+      return data;
+    } catch (err) {
+      console.error('Failed to import files:', err.message);
+      throw err;
+    }
+  }, [fetchProject]);
+
+  const exportProject = useCallback(async (id, options = {}) => {
+    try {
+      const params = new URLSearchParams();
+      if (options.excludeSecrets === false) params.set('excludeSecrets', 'false');
+      if (options.excludeGenerated === false) params.set('excludeGenerated', 'false');
+      if (options.folderPath) params.set('folderPath', options.folderPath);
+      const qs = params.toString();
+      const response = await api.get(`/projects/${id}/export${qs ? '?' + qs : ''}`, { responseType: 'blob' });
+      const blob = response.data;
+      if (blob.type && blob.type.includes('application/json')) {
+        const text = await blob.text();
+        const parsed = JSON.parse(text);
+        throw new Error(parsed.message || 'Export failed');
+      }
+      if (blob.size === 0) throw new Error('Empty file received');
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `${currentProject?.name || 'project'}.zip`;
+      document.body.appendChild(a);
+      a.click();
+      window.URL.revokeObjectURL(url);
+      a.remove();
+    } catch (err) {
+      if (err.message?.includes('Export failed') || err.message?.includes('Empty file')) throw err;
+      if (err.response?.data instanceof Blob) {
+        try {
+          const text = await err.response.data.text();
+          const parsed = JSON.parse(text);
+          throw new Error(parsed.message || `Server error (${err.response.status})`);
+        } catch (parseErr) {
+          if (parseErr instanceof SyntaxError) throw new Error(`Server error (${err.response.status})`);
+          throw parseErr;
+        }
+      }
+      throw err;
+    }
+  }, [currentProject]);
+
   const saveProject = useCallback(async (updates) => {
     const proj = currentProjectRef.current;
     if (!proj) return;
@@ -218,6 +272,84 @@ export function ProjectProvider({ children }) {
     setConflict(null);
   }, []);
 
+  const createFolder = useCallback(async (name, parentPath) => {
+    const proj = currentProjectRef.current;
+    if (!proj) return;
+    try {
+      const { data } = await api.post(`/projects/${proj._id}/folders`, { name, parentPath });
+      await fetchProject(proj._id);
+      return data;
+    } catch (err) {
+      throw err;
+    }
+  }, [fetchProject]);
+
+  const createFileInProject = useCallback(async (name, parentPath, content) => {
+    const proj = currentProjectRef.current;
+    if (!proj) return;
+    try {
+      const { data } = await api.post(`/projects/${proj._id}/files`, { name, parentPath, content });
+      await fetchProject(proj._id);
+      return data;
+    } catch (err) {
+      throw err;
+    }
+  }, [fetchProject]);
+
+  const renameFileFolder = useCallback(async (filePath, newName) => {
+    const proj = currentProjectRef.current;
+    if (!proj) return;
+    try {
+      const encoded = encodeURIComponent(filePath);
+      const { data } = await api.patch(`/projects/${proj._id}/rename/${encoded}`, { newName });
+      await fetchProject(proj._id);
+      return data;
+    } catch (err) {
+      throw err;
+    }
+  }, [fetchProject]);
+
+  const deleteFileFolder = useCallback(async (filePath) => {
+    const proj = currentProjectRef.current;
+    if (!proj) return;
+    try {
+      const encoded = encodeURIComponent(filePath);
+      const { data } = await api.delete(`/projects/${proj._id}/delete/${encoded}`);
+      await fetchProject(proj._id);
+      return data;
+    } catch (err) {
+      throw err;
+    }
+  }, [fetchProject]);
+
+  const moveFileFolder = useCallback(async (filePath, destinationPath, overwrite = false) => {
+    const proj = currentProjectRef.current;
+    if (!proj) return;
+    try {
+      const encoded = encodeURIComponent(filePath);
+      const { data } = await api.patch(`/projects/${proj._id}/move/${encoded}`, { destinationPath, overwrite });
+      await fetchProject(proj._id);
+      return data;
+    } catch (err) {
+      throw err;
+    }
+  }, [fetchProject]);
+
+  const getImportPreview = useCallback(async (files) => {
+    const proj = currentProjectRef.current;
+    if (!proj) return;
+    try {
+      const formData = new FormData();
+      for (const file of files) {
+        formData.append('files', file);
+      }
+      const { data } = await api.post(`/projects/${proj._id}/import/preview`, formData);
+      return data;
+    } catch (err) {
+      throw err;
+    }
+  }, []);
+
   useEffect(() => {
     return () => {
       if (autosaveTimer.current) clearTimeout(autosaveTimer.current);
@@ -236,6 +368,8 @@ export function ProjectProvider({ children }) {
     deleteProject,
     duplicateProject,
     renameProject,
+    importFiles,
+    exportProject,
     updateFiles,
     addFile,
     removeFile,
@@ -244,7 +378,13 @@ export function ProjectProvider({ children }) {
     setActiveFile,
     resolveConflict,
     closeProject,
-  }), [projects, currentProject, loading, saveStatus, conflict, fetchProjects, fetchProject, createProject, deleteProject, duplicateProject, renameProject, updateFiles, addFile, removeFile, renameFile, updateFileContent, setActiveFile, resolveConflict, closeProject]);
+    createFolder,
+    createFileInProject,
+    renameFileFolder,
+    deleteFileFolder,
+    moveFileFolder,
+    getImportPreview,
+  }), [projects, currentProject, loading, saveStatus, conflict, fetchProjects, fetchProject, createProject, deleteProject, duplicateProject, renameProject, importFiles, exportProject, updateFiles, addFile, removeFile, renameFile, updateFileContent, setActiveFile, resolveConflict, closeProject, createFolder, createFileInProject, renameFileFolder, deleteFileFolder, moveFileFolder, getImportPreview]);
 
   return (
     <ProjectContext.Provider value={value}>

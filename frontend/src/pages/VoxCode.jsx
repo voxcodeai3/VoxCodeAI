@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Mic, Square, LogOut, Code2, BarChart3, Folder } from 'lucide-react';
+import { Mic, Square, LogOut, Code2, BarChart3, BookOpen } from 'lucide-react';
 import VoiceWeave from '../components/voice/VoiceWeave';
 import HorizontalWaveform from '../components/voice/HorizontalWaveform';
 import StarField from '../components/voice/StarField';
@@ -343,19 +343,19 @@ export default function VoxCode() {
       <div className="absolute bottom-4 left-4 z-30 flex items-center gap-2">
         <button
           type="button"
+          onClick={() => navigate('/learn')}
+          className="flex items-center gap-2 rounded-xl border border-cyan-500/10 bg-cyan-500/[0.03] px-3 py-2 text-[10px] text-cyan-400/60 hover:text-cyan-400 hover:border-cyan-500/20 transition-all"
+        >
+          <BookOpen className="h-3 w-3" />
+          <span>LEARN</span>
+        </button>
+        <button
+          type="button"
           onClick={() => setIsWorkspaceOpen(true)}
           className="flex items-center gap-2 rounded-xl border border-white/[0.06] bg-white/[0.02] px-3 py-2 text-[10px] text-white/30 hover:text-white/50 hover:border-white/[0.1] transition-all"
         >
           <Code2 className="h-3 w-3" />
           <span>CODE</span>
-        </button>
-        <button
-          type="button"
-          onClick={() => navigate('/projects')}
-          className="flex items-center gap-2 rounded-xl border border-white/[0.06] bg-white/[0.02] px-3 py-2 text-[10px] text-white/30 hover:text-white/50 hover:border-white/[0.1] transition-all"
-        >
-          <Folder className="h-3 w-3" />
-          <span>PROJECTS</span>
         </button>
         <button
           type="button"

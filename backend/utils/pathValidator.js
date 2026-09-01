@@ -72,6 +72,7 @@ function validateProjectFiles(files, limits = {}) {
     if (!pathCheck.valid) {
       return { valid: false, error: `Invalid path "${file.path}": ${pathCheck.error}` };
     }
+    if (file.isFolder) continue;
     const contentSize = Buffer.byteLength(file.content || "", "utf8");
     if (contentSize > maxFileSizeKB * 1024) {
       return { valid: false, error: `File "${file.name}" exceeds ${maxFileSizeKB}KB limit.` };

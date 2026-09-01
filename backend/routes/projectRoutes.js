@@ -9,6 +9,15 @@ const {
   deleteProject,
   duplicateProject,
   renameProject,
+  importFiles,
+  importPreview,
+  exportProject,
+  createFolder,
+  createFileInProject,
+  renameFileFolder,
+  deleteFileFolder,
+  moveFileFolder,
+  upload,
   TEMPLATES,
 } = require("../controllers/projectController");
 
@@ -28,5 +37,12 @@ router.patch("/:id", authMiddleware, updateProject);
 router.delete("/:id", authMiddleware, deleteProject);
 router.post("/:id/duplicate", authMiddleware, duplicateProject);
 router.patch("/:id/rename", authMiddleware, renameProject);
+router.post("/:id/import", authMiddleware, upload.array("files", 500), importFiles);
+router.get("/:id/export", authMiddleware, exportProject);
+router.post("/:id/folders", authMiddleware, createFolder);
+router.post("/:id/files", authMiddleware, createFileInProject);
+router.patch("/:id/rename/:filePath", authMiddleware, renameFileFolder);
+router.delete("/:id/delete/:filePath", authMiddleware, deleteFileFolder);
+router.patch("/:id/move/:filePath", authMiddleware, moveFileFolder);
 
 module.exports = router;

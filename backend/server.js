@@ -11,6 +11,13 @@ const interviewRoutes = require("./routes/interviewRoutes");
 const analyticsRoutes = require("./routes/analyticsRoutes");
 const projectRoutes = require("./routes/projectRoutes");
 const versionRoutes = require("./routes/versionRoutes");
+const courseRoutes = require("./routes/courseRoutes");
+const learningPathRoutes = require("./routes/learningPathRoutes");
+const learningProgressRoutes = require("./routes/learningProgressRoutes");
+const recommendationRoutes = require("./routes/recommendationRoutes");
+const learningDashboardRoutes = require("./routes/learningDashboardRoutes");
+const assessmentRoutes = require("./routes/assessmentRoutes");
+const learningSetupRoutes = require("./routes/learningSetupRoutes");
 
 const app = express();
 
@@ -41,6 +48,27 @@ app.use("/api/interviews", interviewRoutes);
 // Learning analytics routes (JWT protected)
 app.use("/api/analytics", analyticsRoutes);
 
+// Course routes (JWT protected)
+app.use("/api/courses", courseRoutes);
+
+// Learning path routes (JWT protected)
+app.use("/api/learning-paths", learningPathRoutes);
+
+// Learning progress & skill routes (JWT protected)
+app.use("/api/learning", learningProgressRoutes);
+
+// Learning dashboard routes (JWT protected)
+app.use("/api/learning-dashboard", learningDashboardRoutes);
+
+// Recommendation routes (JWT protected)
+app.use("/api/recommendations", recommendationRoutes);
+
+// Assessment routes (JWT protected)
+app.use("/api/assessments", assessmentRoutes);
+
+// Learning setup routes (JWT protected)
+app.use("/api/setup", learningSetupRoutes);
+
 // Project version routes (JWT protected) — must be before project routes
 app.use("/api/projects", versionRoutes);
 
@@ -48,6 +76,15 @@ app.use("/api/projects", versionRoutes);
 app.use("/api/projects", projectRoutes);
 
 app.use((err, req, res, next) => {
+  if (err.code === "LIMIT_FILE_SIZE") {
+    return res.status(400).json({ message: "File too large. Maximum 5MB per file." });
+  }
+  if (err.code === "LIMIT_FILE_COUNT") {
+    return res.status(400).json({ message: "Too many files. Maximum 500 files per import." });
+  }
+  if (err.code === "LIMIT_UNEXPECTED_FILE") {
+    return res.status(400).json({ message: "Unexpected file field." });
+  }
   console.error("Unhandled error:", err);
   res.status(500).json({ message: "Something went wrong on our side. Please try again." });
 });

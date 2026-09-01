@@ -1,4 +1,4 @@
-import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react';
+import { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react';
 
 const CodingWorkspaceContext = createContext(null);
 
@@ -7,8 +7,6 @@ export function useCodingWorkspace() {
   if (!ctx) throw new Error('useCodingWorkspace must be used inside <CodingWorkspaceProvider>');
   return ctx;
 }
-
-const STORAGE_KEY = 'voxcode_workspace';
 
 const LANG_MAP = {
   js: 'javascript', jsx: 'javascript', ts: 'typescript', tsx: 'typescript',
@@ -24,57 +22,21 @@ export function detectLanguage(filename) {
   return LANG_MAP[ext] || 'plaintext';
 }
 
-const DEFAULT_FILES = {
-  'main.js': {
-    content: '// Welcome to VoxCode Coding Workspace\n// Create files and start coding!\n\nfunction greet(name) {\n  return `Hello, ${name}!`;\n}\n\nconsole.log(greet("World"));\n',
-    language: 'javascript',
-  },
-};
-
-function loadPersistedState() {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw);
-      if (parsed.files && typeof parsed.files === 'object') return parsed;
-    }
-  } catch { /* corrupted — start fresh */ }
-  return null;
-}
-
-function persistState(files, activeFile, openFiles) {
-  try {
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ files, activeFile, openFiles }));
-  } catch { /* storage full — non-fatal */ }
-}
-
 export function CodingWorkspaceProvider({ children }) {
-  const persisted = useRef(loadPersistedState());
+  const [files, setFiles] = useState({});
+  const [activeFile, setActiveFile] = useState(null);
+  const [openFiles, setOpenFiles] = useState([]);
+  const activeProjectIdRef = useRef(null);
 
-  const [files, setFiles] = useState(() => persisted.current?.files || DEFAULT_FILES);
-  const [activeFile, setActiveFile] = useState(() => {
-    const p = persisted.current;
-    if (p?.activeFile && p.files?.[p.activeFile]) return p.activeFile;
-    return Object.keys(persisted.current?.files || DEFAULT_FILES)[0] || 'main.js';
-  });
-  const [openFiles, setOpenFiles] = useState(() => {
-    const p = persisted.current;
-    if (p?.openFiles?.length) return p.openFiles.filter((f) => p.files?.[f]);
-    return Object.keys(persisted.current?.files || DEFAULT_FILES);
-  });
-
-  // Persist on every change.
-  useEffect(() => {
-    persistState(files, activeFile, openFiles);
-  }, [files, activeFile, openFiles]);
-
-  const createFile = useCallback((filename, content = '') => {
+  const createFile = useCallback((filename, content = '', parentPath) => {
     const trimmed = filename.trim();
-    if (!trimmed || files[trimmed]) return false;
+    if (!trimmed) return false;
+    const fullPath = parentPath ? `${parentPath}/${trimmed}` : trimmed;
+    if (files[fullPath]) return false;
     const lang = detectLanguage(trimmed);
-    setFiles((prev) => ({ ...prev, [trimmed]: { content, language: lang } }));
-    setActiveFile(trimmed);
-    setOpenFiles((prev) => (prev.includes(trimmed) ? prev : [...prev, trimmed]));
+    setFiles((prev) => ({ ...prev, [fullPath]: { content, language: lang, isFolder: false } }));
+    setActiveFile(fullPath);
+    setOpenFiles((prev) => (prev.includes(fullPath) ? prev : [...prev, fullPath]));
     return true;
   }, [files]);
 
@@ -88,7 +50,7 @@ export function CodingWorkspaceProvider({ children }) {
     setActiveFile((prev) => {
       if (prev !== filename) return prev;
       const remaining = Object.keys(files).filter((f) => f !== filename);
-      return remaining[0] || '';
+      return remaining[0] || null;
     });
   }, [files]);
 
@@ -133,6 +95,34 @@ export function CodingWorkspaceProvider({ children }) {
     if (activeFile) renameFile(activeFile, newName);
   }, [activeFile, renameFile]);
 
+  // Load files from a project. This is the ONLY way files enter the workspace.
+  const loadProjectFiles = useCallback((projectId, projectFiles, projectActiveFile) => {
+    activeProjectIdRef.current = projectId;
+    const newFiles = {};
+    for (const f of projectFiles || []) {
+      newFiles[f.path] = {
+        content: f.content || '',
+        language: f.language || detectLanguage(f.name || f.path),
+        isFolder: f.isFolder || false,
+      };
+    }
+    setFiles(newFiles);
+    const fileKeys = Object.keys(newFiles).filter(k => !newFiles[k].isFolder);
+    const firstFile = (projectActiveFile && newFiles[projectActiveFile] && !newFiles[projectActiveFile].isFolder)
+      ? projectActiveFile
+      : fileKeys[0] || null;
+    setActiveFile(firstFile);
+    setOpenFiles(firstFile ? [firstFile] : []);
+  }, []);
+
+  // Clear everything — used when no project is selected or on project switch
+  const resetWorkspace = useCallback(() => {
+    activeProjectIdRef.current = null;
+    setFiles({});
+    setActiveFile(null);
+    setOpenFiles([]);
+  }, []);
+
   const value = useMemo(() => ({
     files,
     activeFile,
@@ -146,8 +136,10 @@ export function CodingWorkspaceProvider({ children }) {
     closeFile,
     setActiveFile,
     renameActiveFile,
+    loadProjectFiles,
+    resetWorkspace,
     fileList: Object.keys(files),
-  }), [files, activeFile, openFiles, createFile, deleteFile, renameFile, updateFileContent, openFile, closeFile, setActiveFile, renameActiveFile]);
+  }), [files, activeFile, openFiles, createFile, deleteFile, renameFile, updateFileContent, openFile, closeFile, setActiveFile, renameActiveFile, loadProjectFiles, resetWorkspace]);
 
   return (
     <CodingWorkspaceContext.Provider value={value}>

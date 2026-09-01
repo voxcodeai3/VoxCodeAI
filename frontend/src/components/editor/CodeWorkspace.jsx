@@ -1,10 +1,11 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { X, PanelLeftClose, PanelLeft, Code2, Send, Sparkles, Volume2, VolumeX, CheckCircle, AlertTriangle, Loader2, History } from 'lucide-react';
+import { X, PanelLeftClose, PanelLeft, Send, Sparkles, Volume2, VolumeX, CheckCircle, AlertTriangle, Loader2, History } from 'lucide-react';
 import { useCodingWorkspace } from '../../context/CodingWorkspaceContext';
 import { useAI } from '../../context/AIContext';
 import { useVoice } from '../../context/VoiceContext';
 import { useProject } from '../../context/ProjectContext';
 import { useVersions } from '../../context/VersionContext';
+import api from '../../services/api';
 import CodeEditor from './CodeEditor';
 import FileTabs from './FileTabs';
 import FileExplorer from './FileExplorer';
@@ -14,38 +15,112 @@ import CodeDiff from './CodeDiff';
 import NewFileDialog from './NewFileDialog';
 import InsertOptionsDialog from './InsertOptionsDialog';
 import VersionHistoryPanel from './VersionHistoryPanel';
+import ProjectSelector from './ProjectSelector';
+import CreateProjectModal from './CreateProjectModal';
 
 export default function CodeWorkspace({ isOpen, onClose }) {
   const {
     files, activeFile, activeFileData, fileList,
     updateFileContent, createFile, renameActiveFile,
+    loadProjectFiles, resetWorkspace,
   } = useCodingWorkspace();
   const { sendMessage, isThinking } = useAI();
   const { voiceEnabled, toggleVoice } = useVoice();
-  const { currentProject, saveStatus, conflict, resolveConflict, updateFiles, addFile, removeFile, renameFile, setActiveFile: setProjectActiveFile, saveProject } = useProject();
+  const {
+    currentProject, saveStatus, conflict, resolveConflict,
+    fetchProjects, fetchProject, updateFiles,
+  } = useProject();
   const { fetchVersions } = useVersions();
 
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [newFileOpen, setNewFileOpen] = useState(false);
   const [selectedCode, setSelectedCode] = useState('');
-  const [aiResult, setAiResult] = useState(null); // { type, code, explanation, original }
+  const [aiResult, setAiResult] = useState(null);
   const [insertDialogOpen, setInsertDialogOpen] = useState(false);
   const [pendingCode, setPendingCode] = useState(null);
-  const [mobileTab, setMobileTab] = useState('code'); // 'files' | 'code' | 'ai'
-  const [outputExpanded, setOutputExpanded] = useState(false);
+  const [mobileTab, setMobileTab] = useState('code');
   const [generateInput, setGenerateInput] = useState('');
   const [showGenerateInput, setShowGenerateInput] = useState(false);
   const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
+  const [createProjectOpen, setCreateProjectOpen] = useState(false);
 
   const editorRef = useRef(null);
   const generateInputRef = useRef(null);
+  const lastLoadedProjectIdRef = useRef(null);
 
+  // ─── Project → Workspace sync ───
+  // When currentProject changes, load its files into the workspace.
+  // This is the SINGLE entry point for project files into the workspace.
+  useEffect(() => {
+    if (!isOpen) return;
+
+    if (!currentProject) {
+      resetWorkspace();
+      lastLoadedProjectIdRef.current = null;
+      return;
+    }
+
+    // Only reload if this is a different project
+    if (currentProject._id === lastLoadedProjectIdRef.current) return;
+    lastLoadedProjectIdRef.current = currentProject._id;
+
+    loadProjectFiles(currentProject._id, currentProject.files, currentProject.activeFile);
+    setSelectedCode('');
+    setAiResult(null);
+    setPendingCode(null);
+    setShowGenerateInput(false);
+  }, [isOpen, currentProject?._id]);
+
+  // ─── Auto-load most recent project when workspace opens ───
+  const didAutoLoadRef = useRef(false);
+  useEffect(() => {
+    if (!isOpen) { didAutoLoadRef.current = false; return; }
+    if (currentProject || didAutoLoadRef.current) return;
+    didAutoLoadRef.current = true;
+    (async () => {
+      try {
+        const { data } = await api.get('/projects');
+        const list = data.projects || [];
+        if (list.length > 0) {
+          await fetchProject(list[0]._id);
+        }
+      } catch (e) { /* ignore */ }
+    })();
+  }, [isOpen, currentProject, fetchProject]);
+
+  // ─── Workspace → Project sync (debounced) ───
+  // When user edits files in the workspace, save back to the project DB.
+  const syncTimerRef = useRef(null);
+  const lastSyncedRef = useRef(null);
+  useEffect(() => {
+    if (!currentProject || !files || Object.keys(files).length === 0) return;
+    const serialized = JSON.stringify(files);
+    if (serialized === lastSyncedRef.current) return;
+    if (syncTimerRef.current) clearTimeout(syncTimerRef.current);
+    syncTimerRef.current = setTimeout(() => {
+      lastSyncedRef.current = serialized;
+      const projectFiles = Object.entries(files).map(([path, data]) => ({
+        name: path.split('/').pop(),
+        path,
+        content: data.content,
+        language: data.language,
+        isFolder: data.isFolder || false,
+      }));
+      updateFiles(projectFiles, activeFile);
+    }, 500);
+  }, [files, activeFile, currentProject?._id]);
+
+  useEffect(() => {
+    return () => { if (syncTimerRef.current) clearTimeout(syncTimerRef.current); };
+  }, []);
+
+  // ─── AI actions (project-aware) ───
   const handleAction = useCallback((actionId) => {
     const code = selectedCode || activeFileData?.content || '';
     const lang = activeFileData?.language || 'javascript';
     const filename = activeFile || 'untitled';
+    const projectContext = currentProject ? `Project: ${currentProject.name}\n` : '';
 
-    // Generate shows an input for the user to describe what they want.
     if (actionId === 'generate') {
       setShowGenerateInput(true);
       setTimeout(() => generateInputRef.current?.focus(), 50);
@@ -55,31 +130,30 @@ export default function CodeWorkspace({ isOpen, onClose }) {
     let prompt = '';
     switch (actionId) {
       case 'explain':
-        prompt = code
+        prompt = projectContext + (code
           ? `Explain this code:\n\`\`\`${lang}\n${code}\n\`\`\``
-          : `Explain the code in ${filename}.`;
+          : `Explain the code in ${filename}.`);
         break;
       case 'debug':
-        prompt = code
+        prompt = projectContext + (code
           ? `Debug this code:\n\`\`\`${lang}\n${code}\n\`\`\``
-          : `Debug the code in ${filename}.`;
+          : `Debug the code in ${filename}.`);
         break;
       case 'refactor':
-        prompt = code
+        prompt = projectContext + (code
           ? `Refactor this code to be cleaner and more efficient:\n\`\`\`${lang}\n${code}\n\`\`\``
-          : `Refactor the code in ${filename}.`;
+          : `Refactor the code in ${filename}.`);
         break;
       case 'document':
-        prompt = code
+        prompt = projectContext + (code
           ? `Add documentation comments to this code:\n\`\`\`${lang}\n${code}\n\`\`\``
-          : `Add documentation to the code in ${filename}.`;
+          : `Add documentation to the code in ${filename}.`);
         break;
       default:
         return;
     }
-
     sendMessage(prompt, 'text');
-  }, [selectedCode, activeFileData, activeFile, sendMessage]);
+  }, [selectedCode, activeFileData, activeFile, currentProject, sendMessage]);
 
   const handleGenerateSubmit = useCallback(() => {
     const description = generateInput.trim();
@@ -87,8 +161,9 @@ export default function CodeWorkspace({ isOpen, onClose }) {
     const lang = activeFileData?.language || 'javascript';
     const filename = activeFile || 'untitled';
     const code = activeFileData?.content || '';
+    const projectContext = currentProject ? `Project: ${currentProject.name}\n` : '';
 
-    let prompt = `Generate ${lang} code for: ${description}\n\nFile: ${filename}`;
+    let prompt = projectContext + `Generate ${lang} code for: ${description}\n\nFile: ${filename}`;
     if (code.trim()) {
       prompt += `\nCurrent file content:\n\`\`\`${lang}\n${code}\n\`\`\``;
     } else {
@@ -99,7 +174,7 @@ export default function CodeWorkspace({ isOpen, onClose }) {
     setShowGenerateInput(false);
     setGenerateInput('');
     sendMessage(prompt, 'text');
-  }, [generateInput, activeFileData, activeFile, sendMessage]);
+  }, [generateInput, activeFileData, activeFile, currentProject, sendMessage]);
 
   const handleEditorSelect = useCallback((text) => {
     setSelectedCode(text);
@@ -133,18 +208,19 @@ export default function CodeWorkspace({ isOpen, onClose }) {
     setNewFileOpen(true);
   }, []);
 
+  const handleCreateProject = useCallback((project) => {
+    // Project is auto-selected by ProjectContext.createProject
+  }, []);
+
   const handleRestoreVersion = useCallback(async (restoredProject) => {
-    if (restoredProject?.files) {
-      const restoredFiles = {};
-      for (const f of restoredProject.files) {
-        restoredFiles[f.path] = { content: f.content, language: f.language };
-      }
-      updateFiles(restoredFiles, restoredProject.activeFile);
+    if (restoredProject?.files && currentProject?._id) {
+      loadProjectFiles(currentProject._id, restoredProject.files, restoredProject.activeFile);
+      lastLoadedProjectIdRef.current = currentProject._id;
     }
     if (restoredProject?._id) {
       fetchVersions(restoredProject._id);
     }
-  }, [updateFiles, fetchVersions]);
+  }, [currentProject?._id, loadProjectFiles, fetchVersions]);
 
   if (!isOpen) return null;
 
@@ -160,14 +236,10 @@ export default function CodeWorkspace({ isOpen, onClose }) {
           >
             {sidebarOpen ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeft className="h-4 w-4" />}
           </button>
-          <div className="flex items-center gap-2">
-            <Code2 className="h-4 w-4 text-cyan-300/60" />
-            <span className="text-xs font-medium text-white/70">
-              {currentProject ? currentProject.name : 'CODING WORKSPACE'}
-            </span>
-          </div>
+          <ProjectSelector onCreateNew={() => setCreateProjectOpen(true)} />
           <span className="text-[10px] text-white/20 hidden sm:inline">
-            {fileList.length} file{fileList.length !== 1 ? 's' : ''}
+            {fileList.filter(f => !files[f]?.isFolder).length} file{fileList.filter(f => !files[f]?.isFolder).length !== 1 ? 's' : ''}
+            {Object.values(files).filter(f => f.isFolder).length > 0 && `, ${Object.values(files).filter(f => f.isFolder).length} folder${Object.values(files).filter(f => f.isFolder).length !== 1 ? 's' : ''}`}
           </span>
           {currentProject && (
             <span className={`text-[10px] flex items-center gap-1 ${
@@ -303,12 +375,16 @@ export default function CodeWorkspace({ isOpen, onClose }) {
               />
             ) : (
               <div className="flex h-full items-center justify-center text-xs text-white/20">
-                No file open. Create or select a file.
+                {currentProject
+                  ? (fileList.length === 0
+                    ? 'No files in this project. Create or import files.'
+                    : 'Select a file to edit.')
+                  : 'Select or create a project to start coding.'}
               </div>
             )}
           </div>
 
-          {/* Diff view — when AI suggests changes */}
+          {/* Diff view */}
           {aiResult && (
             <div className="border-t border-white/[0.06] p-3 bg-[#0a0f1e]">
               <CodeDiff
@@ -322,7 +398,7 @@ export default function CodeWorkspace({ isOpen, onClose }) {
           )}
         </div>
 
-        {/* Output panel — AI explanations */}
+        {/* Output panel — AI */}
         <div className={`w-72 border-l border-white/[0.04] bg-[#080d1a] shrink-0 ${
           mobileTab !== 'ai' ? 'hidden lg:block' : 'flex-1'
         }`}>
@@ -347,6 +423,11 @@ export default function CodeWorkspace({ isOpen, onClose }) {
         onReplace={handleReplaceFile}
         onCreateNew={handleCreateNewFile}
         language={activeFileData?.language}
+      />
+      <CreateProjectModal
+        isOpen={createProjectOpen}
+        onClose={() => setCreateProjectOpen(false)}
+        onCreated={handleCreateProject}
       />
 
       {/* Conflict UI */}
