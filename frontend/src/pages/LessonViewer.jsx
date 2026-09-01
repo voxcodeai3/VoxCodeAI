@@ -1,9 +1,11 @@
 import { useEffect, useState, useRef } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
-import { ChevronLeft, ChevronRight, BookOpen, Play, CheckCircle, Send, Lightbulb } from 'lucide-react';
+import { ChevronLeft, ChevronRight, BookOpen, Play, CheckCircle, Send, Lightbulb, Code2, Target } from 'lucide-react';
 import { useCourse } from '../context/CourseContext';
 import { useAuth } from '../context/AuthContext';
+import { useProject } from '../context/ProjectContext';
 import api from '../services/api';
+import learningMemoryApi from '../services/learningMemoryApi';
 
 const ContentBlock = ({ block }) => {
   if (!block) return null;
@@ -75,29 +77,37 @@ export default function LessonViewer() {
   const handleComplete = async () => {
     setCompleting(true);
     try {
-      await updateLessonProgress({
-        lessonId,
-        courseId: currentLesson?.module?._id,
-        status: 'completed',
-        progress: 100,
-        score: 100,
-      });
+      await Promise.all([
+        updateLessonProgress({
+          lessonId,
+          courseId: currentLesson?.module?._id,
+          status: 'completed',
+          progress: 100,
+          score: 100,
+        }),
+        learningMemoryApi.updateProgress({ lessonId, status: 'completed' }).catch(() => {}),
+      ]);
       setCompleted(true);
     } finally {
       setCompleting(false);
     }
   };
 
+  const { currentProject } = useProject();
+
   const handleStartLesson = async () => {
     if (starting || started) return;
     setStarting(true);
     try {
-      await updateLessonProgress({
-        lessonId,
-        courseId: currentLesson?.module?.course || currentLesson?.module?._id,
-        status: 'in_progress',
-        progress: 10,
-      });
+      await Promise.all([
+        updateLessonProgress({
+          lessonId,
+          courseId: currentLesson?.module?.course || currentLesson?.module?._id,
+          status: 'in_progress',
+          progress: 10,
+        }),
+        learningMemoryApi.updateProgress({ lessonId, status: 'in_progress' }).catch(() => {}),
+      ]);
       setStarted(true);
       setTimeout(() => lessonRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 100);
     } finally {
@@ -111,7 +121,9 @@ export default function LessonViewer() {
     setAiResponse('');
     try {
       const { data } = await api.post('/ai/chat', {
-        message: `[Lesson Context: ${currentLesson?.title}] ${askText}`,
+        message: askText,
+        lessonId: currentLesson?._id || lessonId,
+        projectId: currentProject?._id,
         context: {
           mode: 'lesson',
           lessonTitle: currentLesson?.title,
@@ -132,7 +144,9 @@ export default function LessonViewer() {
     setAiResponse('');
     try {
       const { data } = await api.post('/ai/chat', {
-        message: `[Lesson: ${currentLesson?.title}] Explain this lesson again in a simpler way with a different analogy.`,
+        message: `Explain this lesson again in a simpler way with a different analogy.`,
+        lessonId: currentLesson?._id || lessonId,
+        projectId: currentProject?._id,
         context: {
           mode: 'lesson',
           lessonTitle: currentLesson?.title,
@@ -145,6 +159,23 @@ export default function LessonViewer() {
     } finally {
       setAskingAi(false);
     }
+  };
+
+  const handlePracticeInCode = async () => {
+    // Save exercise attempt and open code workspace with lesson context
+    try {
+      await learningMemoryApi.saveExercise({ lessonId: currentLesson?._id || lessonId, topic: currentLesson?.title, passed: false });
+    } catch {}
+    // Persist lesson context for Code workspace to pick up
+    try {
+      localStorage.setItem('voxcode:practiceLesson', JSON.stringify({
+        lessonId: currentLesson?._id || lessonId,
+        title: currentLesson?.title,
+        objective: currentLesson?.objective,
+        projectId: currentProject?._id,
+      }));
+    } catch {}
+    navigate('/voxcode');
   };
 
   if (loading) {
@@ -220,6 +251,36 @@ export default function LessonViewer() {
             <p className="text-white/30 text-sm italic">No content available for this lesson yet.</p>
           )}
         </div>
+
+        {/* Lesson Meta — objective, prerequisites, time */}
+        {(currentLesson.description || currentLesson.objective) && (
+          <div className="border border-white/[0.06] rounded-xl p-5 mb-6 bg-white/[0.02]">
+            {currentLesson.description && <p className="text-sm text-white/60 mb-2">{currentLesson.description}</p>}
+            {currentLesson.objective && <div className="flex gap-2 text-xs"><Target className="w-3 h-3 text-cyan-400 mt-0.5 shrink-0" /><span className="text-white/50">Objective: {currentLesson.objective}</span></div>}
+            <div className="flex gap-3 mt-2 text-xs text-white/30">
+              {currentLesson.estimatedMinutes && <span>{currentLesson.estimatedMinutes} min</span>}
+              {currentLesson.prerequisites?.length > 0 && <span>Prerequisites: {currentLesson.prerequisites.length} topic(s)</span>}
+            </div>
+          </div>
+        )}
+
+        {/* Practice — opens existing Code Workspace, not a second editor */}
+        <div className="border border-white/[0.06] rounded-xl p-5 mb-6 bg-white/[0.02]">
+          <h3 className="text-sm font-medium text-white/80 flex items-center gap-2 mb-2"><Code2 className="w-4 h-4 text-violet-400" /> Practice</h3>
+          <p className="text-xs text-white/40 mb-3">Apply what you learned — write code for this lesson. Your current project remains the run context.</p>
+          <button onClick={handlePracticeInCode} className="px-4 py-2 bg-violet-500/15 text-violet-300 rounded-lg text-xs font-medium hover:bg-violet-500/20 transition-colors flex items-center gap-2">
+            <Code2 className="w-3 h-3" /> Practice in Code
+          </button>
+          <div className="text-[11px] text-white/30 mt-2">Current project: {currentProject?.name || 'No project selected'} — will be used to run your code.</div>
+        </div>
+
+        {/* Checkpoint */}
+        {currentLesson.checkpoint && (
+          <div className="border border-amber-500/15 rounded-xl p-5 mb-6 bg-amber-500/5">
+            <h3 className="text-sm font-medium text-amber-300 mb-1">Checkpoint</h3>
+            <p className="text-xs text-white/60">{currentLesson.checkpoint}</p>
+          </div>
+        )}
 
         {/* Complete Button */}
         <div className="mb-6">

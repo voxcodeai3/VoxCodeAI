@@ -1,6 +1,7 @@
 const mongoose = require("mongoose");
 const Conversation = require("../models/Conversation");
 const LearnerProfile = require("../models/LearnerProfile");
+const LearningMemory = require("../models/LearningMemory");
 const { generateResponse, generateQuestion, evaluateAnswer } = require("../services/aiService");
 const { modelManager } = require("../services/modelManager");
 const {
@@ -9,6 +10,7 @@ const {
   buildLearnerContext,
   buildConversationSummary,
 } = require("../services/memoryService");
+const { buildLearningContext, contextToPrompt } = require("../services/ai/contextBuilder");
 
 const MAX_MESSAGE_LENGTH = 4000;
 const HISTORY_WINDOW = 12;
@@ -31,6 +33,8 @@ async function chat(req, res) {
       teachingMode = "learn",
       codingContext,
       practiceMode,
+      lessonId,
+      projectId,
     } = req.body || {};
 
     if (typeof message !== "string" || !message.trim()) {
@@ -68,7 +72,52 @@ async function chat(req, res) {
 
     // Load learner profile and build context for personalized responses.
     const learnerProfile = await LearnerProfile.findOrCreate(userId);
-    const learnerContext = buildLearnerContext(learnerProfile);
+    const learnerContextBase = buildLearnerContext(learnerProfile);
+
+    // Persistent learning memory — MongoDB is source of truth, not AI
+    const learningMemory = await LearningMemory.findOrCreate(userId);
+    // Keep memory's current lesson in sync with what frontend is viewing
+    if (lessonId && mongoose.Types.ObjectId.isValid(lessonId)) {
+      learningMemory.currentLesson = lessonId;
+      learningMemory.lastActivity = new Date();
+      learningMemory.lastOpenedAt = new Date();
+      // Best-effort: also set currentStage/currentPath if we can resolve
+      try {
+        const { Lesson } = require("../models/Course");
+        const Topic = require("../models/Topic");
+        const Stage = require("../models/Stage");
+        const l = await Lesson.findById(lessonId).lean();
+        if (l?.topic) {
+          const t = await Topic.findById(l.topic).lean();
+          if (t?.stage) {
+            learningMemory.currentStage = t.stage;
+            const st = await Stage.findById(t.stage).lean();
+            if (st?.learningPath) learningMemory.activeLearningPath = st.learningPath;
+          }
+        }
+      } catch {}
+      await learningMemory.save();
+    } else {
+      // touch lastOpenedAt even without lesson
+      learningMemory.lastOpenedAt = new Date();
+      await learningMemory.save().catch(() => {});
+    }
+
+    // Build compact, model-independent learning context (3 layers)
+    let learningContextObj = null;
+    let learningContext = "";
+    try {
+      learningContextObj = await buildLearningContext(userId, {
+        lessonId: lessonId || learningMemory.currentLesson,
+        projectId: projectId || codingContext?.projectId,
+        question: message,
+      });
+      learningContext = contextToPrompt(learningContextObj);
+      console.log(`AI request: user=${userId} lesson=${learningContextObj.currentLesson?.title || "none"} stage=${learningContextObj.currentStage?.title || "none"} path=${learningContextObj.learningPath?.title || "none"} modelPending`);
+    } catch (e) {
+      console.log("Learning context build failed, continuing with base context:", e.message);
+    }
+    const learnerContext = [learnerContextBase, learningContext].filter(Boolean).join("\n\n--- Learning Context ---\n");
 
     // Practice mode: generate question or evaluate code via dedicated functions.
     if (practiceMode === "generate") {
@@ -206,6 +255,36 @@ async function chat(req, res) {
     if (signals) {
       await learnerProfile.save();
     }
+
+    // Update persistent learning memory (meaningful changes only, validated on backend)
+    try {
+      const mem = await LearningMemory.findOne({ user: userId });
+      if (mem) {
+        mem.lastActivity = new Date();
+        // Track weak topics if question suggests struggle and current lesson exists
+        const struggleHints = ["don't understand", "confused", "not working", "error", "failed", "struggling"];
+        const qLower = message.toLowerCase();
+        const isStruggle = struggleHints.some(h => qLower.includes(h));
+        if (isStruggle && learningContextObj?.currentLesson?.title) {
+          const topic = learningContextObj.currentLesson.title;
+          if (!mem.weakTopics.includes(topic)) {
+            mem.weakTopics = [...mem.weakTopics, topic].slice(-20);
+          }
+        }
+        // Conversation summarization for long threads
+        if (conversation.messages.length > 20 && conversation.messages.length % 10 === 0) {
+          try {
+            const summary = buildConversationSummary(conversation.messages);
+            if (summary) mem.conversationSummary = summary.slice(0, 500);
+          } catch {}
+        }
+        await mem.save();
+        console.log(`Learning memory updated for user=${userId} weakTopics=${mem.weakTopics.length}`);
+      }
+    } catch (e) {
+      console.log("Memory update failed (non-fatal):", e.message);
+    }
+    console.log(`AI response generated via model, conversation=${conversation._id}`);
 
     return res.json({
       message: result.reply,

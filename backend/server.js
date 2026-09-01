@@ -18,6 +18,8 @@ const recommendationRoutes = require("./routes/recommendationRoutes");
 const learningDashboardRoutes = require("./routes/learningDashboardRoutes");
 const assessmentRoutes = require("./routes/assessmentRoutes");
 const learningSetupRoutes = require("./routes/learningSetupRoutes");
+const learningFoundationRoutes = require("./routes/learningFoundationRoutes");
+const learningMemoryRoutes = require("./routes/learningMemoryRoutes");
 
 const app = express();
 
@@ -68,6 +70,12 @@ app.use("/api/assessments", assessmentRoutes);
 
 // Learning setup routes (JWT protected)
 app.use("/api/setup", learningSetupRoutes);
+
+// Learning foundation routes (JWT protected) — Step 1 foundation
+app.use("/api/learning", learningFoundationRoutes);
+
+// Learning memory routes (JWT protected) — Step 5 persistent memory
+app.use("/api/learning/memory", learningMemoryRoutes);
 
 // Project version routes (JWT protected) — must be before project routes
 app.use("/api/projects", versionRoutes);

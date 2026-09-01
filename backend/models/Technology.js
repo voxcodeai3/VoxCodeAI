@@ -22,8 +22,10 @@ const technologySchema = new mongoose.Schema(
       enum: ["available", "coming_soon", "deprecated"],
       default: "available",
     },
-    prerequisites: { type: [String], default: [] },
+    prerequisites: { type: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Technology' }], default: [] },
+    relatedTechnologies: { type: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Technology' }], default: [] },
     relatedGoals: { type: [String], default: [] },
+    active: { type: Boolean, default: true },
   },
   { timestamps: true, versionKey: false }
 );

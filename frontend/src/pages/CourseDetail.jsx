@@ -102,18 +102,27 @@ export default function CourseDetail() {
           )}
         </div>
 
-        {/* Modules & Lessons */}
-        <div className="space-y-6">
-          {currentCourse.modules?.map((mod) => (
-            <div key={mod._id} className="bg-white/[0.03] border border-white/[0.06] rounded-xl overflow-hidden">
-              <div className="px-5 py-3 border-b border-white/[0.04] bg-white/[0.02]">
-                <h3 className="text-sm font-semibold text-white/80">{mod.title}</h3>
-                {mod.description && (
-                  <p className="text-xs text-white/30 mt-1">{mod.description}</p>
-                )}
-              </div>
-              <div className="divide-y divide-white/[0.04]">
-                {mod.lessons?.map((lesson) => {
+        {/* Stages — calm curriculum list, not dashboard cards */}
+        <div className="border border-white/[0.06] rounded-xl overflow-hidden divide-y divide-white/[0.04] bg-white/[0.02]">
+          {currentCourse.modules?.map((mod, idx) => {
+            const modLessons = mod.lessons || [];
+            const modCompleted = modLessons.filter(l => lessons.find(lp => lp.lesson?._id === l._id)?.status === 'completed').length;
+            const isCurrent = modLessons.some(l => lessons.find(lp => lp.lesson?._id === l._id)?.status === 'in_progress');
+            const isDone = modCompleted === modLessons.length && modLessons.length > 0;
+            return (
+              <div key={mod._id}>
+                <div className={`px-5 py-3 flex items-center gap-3 ${isDone ? 'opacity-60' : ''}`}>
+                  <span className={`w-7 h-7 rounded-full flex items-center justify-center text-xs shrink-0 border ${isDone ? 'bg-emerald-500/15 text-emerald-400 border-emerald-500/20' : isCurrent ? 'bg-cyan-500/15 text-cyan-400 border-cyan-500/20' : 'bg-white/5 text-white/30 border-white/10'}`}>
+                    {isDone ? '✓' : isCurrent ? '●' : '○'}
+                  </span>
+                  <div className="flex-1 min-w-0">
+                    <div className="text-xs tracking-widest text-white/40">STAGE {String(idx + 1).padStart(2, '0')}</div>
+                    <h3 className="text-sm font-medium text-white/80">{mod.title}</h3>
+                  </div>
+                  <span className="text-xs text-white/30">{modCompleted}/{modLessons.length}</span>
+                </div>
+                <div className="divide-y divide-white/[0.03] border-t border-white/[0.04]">
+                  {modLessons.map((lesson) => {
                   const lessonProg = lessons.find(
                     (l) => l.lesson?._id === lesson._id
                   );
@@ -160,7 +169,8 @@ export default function CourseDetail() {
                 })}
               </div>
             </div>
-          ))}
+          );
+          })}
         </div>
       </div>
     </div>

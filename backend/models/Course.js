@@ -18,16 +18,29 @@ const lessonSchema = new mongoose.Schema(
     module: {
       type: mongoose.Schema.Types.ObjectId,
       ref: "CourseModule",
-      required: true,
+      required: false,
+    },
+    topic: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Topic",
+      required: false,
+      index: true,
     },
     title: { type: String, required: true, trim: true },
+    slug: { type: String, trim: true, index: true, sparse: true },
     description: { type: String, default: "" },
+    objective: { type: String, default: "" },
     type: {
       type: String,
       enum: ["concept", "coding", "exercise", "quiz", "project", "review"],
       default: "concept",
     },
     content: { type: [lessonContentSchema], default: [] },
+    examples: { type: [lessonContentSchema], default: [] },
+    exercises: { type: [lessonContentSchema], default: [] },
+    commonMistakes: { type: [String], default: [] },
+    checkpoint: { type: String, default: "" },
+    assessment: { type: mongoose.Schema.Types.ObjectId, ref: "Assessment", default: null },
     difficulty: {
       type: String,
       enum: ["beginner", "intermediate", "advanced"],
@@ -40,6 +53,12 @@ const lessonSchema = new mongoose.Schema(
       type: [{ type: mongoose.Schema.Types.ObjectId, ref: "Lesson" }],
       default: [],
     },
+    status: {
+      type: String,
+      enum: ["draft", "published", "archived"],
+      default: "published",
+    },
+    active: { type: Boolean, default: true },
   },
   { timestamps: true, versionKey: false }
 );

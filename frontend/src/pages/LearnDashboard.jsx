@@ -1,327 +1,320 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useMemo } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { BookOpen, Flame, Clock, Target, TrendingUp, ChevronRight, Play, Star, Award, Calendar, Route } from 'lucide-react';
+import { Search, ChevronRight, Play, BookOpen, Layers, Database, Wrench, Smartphone, Code2 } from 'lucide-react';
 import { useCourse } from '../context/CourseContext';
 import { useAuth } from '../context/AuthContext';
+import TechnologyDropdown from '../components/learn/TechnologyDropdown';
+import LearningStackCard from '../components/learn/LearningStackCard';
+import { CATEGORIES, PROGRAMMING_LANGUAGES, FRONTEND_STACKS, BACKEND_STACKS, PYTHON_FULLSTACK, JAVA_FULLSTACK, MOBILE_STACKS, DATABASES, TOOLS } from '../data/learnCatalog';
+import learningApi from '../services/learningApi';
+import learningMemoryApi from '../services/learningMemoryApi';
 
-const DifficultyBadge = ({ level }) => {
-  const colors = {
-    beginner: 'bg-emerald-500/10 text-emerald-400 border-emerald-500/20',
-    intermediate: 'bg-amber-500/10 text-amber-400 border-amber-500/20',
-    advanced: 'bg-red-500/10 text-red-400 border-red-500/20',
-  };
+function Section({ id, title, subtitle, icon: Icon, children }) {
   return (
-    <span className={`text-xs px-2 py-0.5 rounded border ${colors[level] || colors.beginner}`}>
-      {level}
-    </span>
+    <section id={id} className="scroll-mt-20 border-t border-white/[0.06] pt-8 first:border-t-0 first:pt-0">
+      <div className="flex items-center gap-2 mb-1">
+        {Icon && <Icon className="w-4 h-4 text-white/30" />}
+        <h2 className="text-sm font-semibold tracking-widest text-white/60 uppercase">{title}</h2>
+      </div>
+      {subtitle && <p className="text-xs text-white/40 mb-4">{subtitle}</p>}
+      {children}
+    </section>
   );
-};
+}
 
-const ProgressBar = ({ percent, color = 'cyan' }) => {
-  const colorMap = {
-    cyan: 'bg-cyan-500',
-    violet: 'bg-violet-500',
-    emerald: 'bg-emerald-500',
-  };
+function ContinueBanner({ dashboard, resume, onContinue }) {
+  const hasResume = resume?.hasProgress && resume?.currentLesson;
+  const hasActive = dashboard?.activePath || dashboard?.inProgressLessons > 0 || hasResume;
+  if (!hasActive) return null;
+  const active = dashboard?.activePath;
+  if (hasResume) {
+    return (
+      <div className="bg-white text-black rounded-xl p-5 flex flex-col md:flex-row md:items-center gap-4">
+        <div className="flex-1 min-w-0">
+          <div className="text-xs tracking-widest text-black/50 mb-1">CONTINUE LEARNING</div>
+          <div className="font-medium truncate">{resume.learningPath?.title || resume.activeLearningPath?.title || 'Your learning'}</div>
+          <div className="text-sm text-black/60 truncate">
+            {[resume.currentStage?.title, resume.currentLesson?.title].filter(Boolean).join(' · ') || resume.currentLesson?.title || 'Pick up where you left off'}
+          </div>
+        </div>
+        <button onClick={onContinue} className="px-5 py-2.5 bg-black text-white rounded-lg text-sm font-medium flex items-center gap-2 shrink-0">
+          <Play className="w-4 h-4" /> Continue Learning <ChevronRight className="w-4 h-4" />
+        </button>
+      </div>
+    );
+  }
   return (
-    <div className="w-full h-2 bg-white/5 rounded-full overflow-hidden">
-      <div
-        className={`h-full rounded-full transition-all duration-500 ${colorMap[color] || colorMap.cyan}`}
-        style={{ width: `${Math.min(100, percent)}%` }}
-      />
+    <div className="bg-white text-black rounded-xl p-5 flex flex-col md:flex-row md:items-center gap-4">
+      <div className="flex-1 min-w-0">
+        <div className="text-xs tracking-widest text-black/50 mb-1">CONTINUE LEARNING</div>
+        <div className="font-medium truncate">{active?.title || 'Your learning'}</div>
+        <div className="text-sm text-black/60 truncate">{active?.description || 'Pick up where you left off'}</div>
+      </div>
+      <button onClick={onContinue} className="px-5 py-2.5 bg-black text-white rounded-lg text-sm font-medium flex items-center gap-2 shrink-0">
+        <Play className="w-4 h-4" /> Continue Learning <ChevronRight className="w-4 h-4" />
+      </button>
     </div>
   );
-};
+}
 
 export default function LearningDashboard() {
   const navigate = useNavigate();
   const { user } = useAuth();
   const {
-    dashboard, calendar, recommendations, courses, learningPaths,
-    fetchDashboard, fetchCalendar, fetchRecommendations,
-    fetchCourses, fetchLearningPaths, setActivePath,
+    dashboard, recommendations, courses, learningPaths,
+    fetchDashboard, fetchRecommendations, fetchCourses, fetchLearningPaths,
   } = useCourse();
   const [loading, setLoading] = useState(true);
+  const [q, setQ] = useState('');
+  const [filterDifficulty, setFilterDifficulty] = useState('all');
+  const [filterStatus, setFilterStatus] = useState('all');
+  const [foundationPaths, setFoundationPaths] = useState(null);
+  const [foundationTechs, setFoundationTechs] = useState(null);
+  const [apiCategories, setApiCategories] = useState(null);
+  const [resume, setResume] = useState(null);
 
   useEffect(() => {
     let cancelled = false;
     async function load() {
-      setLoading(true);
-      await Promise.all([
-        fetchDashboard(),
-        fetchCalendar(),
-        fetchRecommendations(),
-        fetchCourses(),
-        fetchLearningPaths(),
-      ]);
+      await Promise.all([fetchDashboard(), fetchRecommendations(), fetchCourses(), fetchLearningPaths()]);
       if (!cancelled) setLoading(false);
     }
     load();
     return () => { cancelled = true; };
   }, []);
 
+  useEffect(() => {
+    let cancelled = false;
+    async function loadFoundation() {
+      try {
+        const [cats, techs, paths] = await Promise.all([
+          learningApi.getCategories(),
+          learningApi.getTechnologies(),
+          learningApi.getPaths(),
+        ]);
+        if (!cancelled) {
+          setApiCategories(cats);
+          setFoundationTechs(techs);
+          setFoundationPaths(paths);
+        }
+      } catch {}
+    }
+    loadFoundation();
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    learningMemoryApi.getResume().then(setResume).catch(() => {});
+  }, []);
+
+  const normalizedQ = q.trim().toLowerCase();
+  const matches = (stack) => {
+    if (!normalizedQ) return true;
+    const hay = [stack.title, ...(stack.techs || [])].join(' ').toLowerCase();
+    return hay.includes(normalizedQ);
+  };
+  const apiMatches = (path) => {
+    if (!normalizedQ) return true;
+    const hay = [path.title, path.description, ...(path.technologies||[]).map(t=>t.name||t.slug||'')].join(' ').toLowerCase();
+    return hay.includes(normalizedQ);
+  };
+  const difficultyMatches = (stack) => filterDifficulty === 'all' || stack.difficulty === filterDifficulty;
+  const apiDifficultyMatches = (path) => filterDifficulty === 'all' || path.difficulty === filterDifficulty;
+
+  const frontendApi = foundationPaths?.filter(p => p.category === 'frontend') || [];
+  const backendApi = foundationPaths?.filter(p => p.category === 'backend') || [];
+  const fullstackApi = foundationPaths?.filter(p => p.category === 'fullstack') || [];
+  const mobileApi = foundationPaths?.filter(p => p.category === 'mobile') || [];
+  const databasesApi = foundationPaths?.filter(p => p.category === 'databases') || [];
+
   if (loading && !dashboard) {
-    return (
-      <div className="min-h-screen bg-[#08090d] flex items-center justify-center">
-        <div className="text-cyan-400 animate-pulse text-sm font-mono">Loading learning dashboard...</div>
-      </div>
-    );
+    return <div className="min-h-screen bg-[#08090d] flex items-center justify-center"><div className="text-white/40 text-sm">Loading Learn…</div></div>;
   }
 
-  const inProgressCourse = dashboard?.inProgressLessons > 0;
-  const streak = dashboard?.streak || 0;
-  const weeklyMinutes = dashboard?.weeklyMinutes || 0;
-  const completedLessons = dashboard?.completedLessons || 0;
+  const goLesson = (lessonId) => lessonId && navigate(`/learn/lesson/${lessonId}`);
+  const goCourse = (slug) => {
+    const c = courses.find(x => x.slug === slug);
+    if (c) navigate(`/learn/course/${c._id}`);
+    else navigate('/learn/courses');
+  };
+  const goPath = (slug) => {
+    const p = learningPaths.find(x => x.slug === slug);
+    if (p) navigate(`/learn/path/${p._id}`);
+    else navigate('/learn/paths');
+  };
+
+  const handleContinue = () => {
+    if (resume?.hasProgress && resume?.currentLesson?._id) {
+      navigate(`/learn/lesson/${resume.currentLesson._id}`);
+      return;
+    }
+    const rec = recommendations.find(r => r.type === 'continue' && r.lessonId);
+    if (rec) goLesson(rec.lessonId);
+    else if (dashboard?.activePath) navigate(`/learn/path/${dashboard.activePath._id}`);
+    else navigate('/learn/courses');
+  };
 
   return (
     <div className="min-h-screen bg-[#08090d] text-white">
-      <div className="max-w-7xl mx-auto px-4 py-8">
-        {/* Header */}
-        <div className="mb-8">
-          <h1 className="text-2xl font-bold text-white mb-1">
-            Welcome back, {user?.name || 'Learner'}
-          </h1>
-          <p className="text-white/50 text-sm">Continue your learning journey</p>
+      <div className="max-w-5xl mx-auto px-4 py-8">
+        {/* Hero — calm, not glass-card */}
+        <div className="mb-6">
+          <h1 className="text-2xl font-bold tracking-tight">Learn to code</h1>
+          <p className="text-sm text-white/50 mt-1 max-w-2xl">Choose what you want to learn. Build your skills step by step with guided lessons, practice, and projects.</p>
         </div>
 
-        {/* Stats Row */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
-          <div className="bg-white/[0.03] border border-white/[0.06] rounded-xl p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <Flame className="w-4 h-4 text-amber-400" />
-              <span className="text-xs text-white/40">Streak</span>
-            </div>
-            <div className="text-xl font-bold text-white">{streak} day{streak !== 1 ? 's' : ''}</div>
+        {/* Search + filters — simple row */}
+        <div className="mb-6 space-y-3">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
+            <input
+              value={q}
+              onChange={e => setQ(e.target.value)}
+              placeholder="Search what you want to learn…  e.g. React, Python, Django"
+              className="w-full bg-white/[0.04] border border-white/[0.08] rounded-lg pl-9 pr-4 py-2.5 text-sm text-white placeholder-white/30 focus:outline-none focus:border-white/15"
+            />
           </div>
-          <div className="bg-white/[0.03] border border-white/[0.06] rounded-xl p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <Clock className="w-4 h-4 text-cyan-400" />
-              <span className="text-xs text-white/40">This Week</span>
+          <div className="flex flex-wrap gap-2">
+            <select value={filterDifficulty} onChange={e => setFilterDifficulty(e.target.value)} style={{ colorScheme: 'dark' }} className="bg-[#14161f] border border-white/[0.08] rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-white/15">
+              <option className="bg-[#14161f] text-white" value="all">All levels</option>
+              <option className="bg-[#14161f] text-white" value="beginner">Beginner</option>
+              <option className="bg-[#14161f] text-white" value="intermediate">Intermediate</option>
+              <option className="bg-[#14161f] text-white" value="advanced">Advanced</option>
+            </select>
+            <select value={filterStatus} onChange={e => setFilterStatus(e.target.value)} style={{ colorScheme: 'dark' }} className="bg-[#14161f] border border-white/[0.08] rounded-lg px-3 py-2 text-xs text-white focus:outline-none focus:border-white/15">
+              <option className="bg-[#14161f] text-white" value="all">All</option>
+              <option className="bg-[#14161f] text-white" value="not_started">Not Started</option>
+              <option className="bg-[#14161f] text-white" value="in_progress">In Progress</option>
+              <option className="bg-[#14161f] text-white" value="completed">Completed</option>
+            </select>
+            <div className="flex items-center gap-1 text-xs text-white/30 ml-auto">
+              <span className="hidden sm:inline">7 categories</span>
             </div>
-            <div className="text-xl font-bold text-white">{weeklyMinutes}m</div>
-          </div>
-          <div className="bg-white/[0.03] border border-white/[0.06] rounded-xl p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <BookOpen className="w-4 h-4 text-violet-400" />
-              <span className="text-xs text-white/40">Completed</span>
-            </div>
-            <div className="text-xl font-bold text-white">{completedLessons}</div>
-          </div>
-          <div className="bg-white/[0.03] border border-white/[0.06] rounded-xl p-4">
-            <div className="flex items-center gap-2 mb-2">
-              <Target className="w-4 h-4 text-emerald-400" />
-              <span className="text-xs text-white/40">Skills</span>
-            </div>
-            <div className="text-xl font-bold text-white">{dashboard?.masteredSkills || 0}/{dashboard?.totalSkills || 0}</div>
           </div>
         </div>
 
-        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-          {/* Main Column */}
-          <div className="lg:col-span-2 space-y-6">
-            {/* Continue Learning */}
-            {inProgressCourse && (
-              <div className="bg-white/[0.03] border border-white/[0.06] rounded-xl p-5">
-                <h2 className="text-sm font-semibold text-white/60 mb-3 flex items-center gap-2">
-                  <Play className="w-4 h-4 text-cyan-400" />
-                  CONTINUE LEARNING
-                </h2>
-                <div className="bg-cyan-500/5 border border-cyan-500/10 rounded-lg p-4">
-                  <div className="text-white font-medium mb-1">
-                    {dashboard?.inProgressLessons} lesson{dashboard?.inProgressLessons !== 1 ? 's' : ''} in progress
-                  </div>
-                  <p className="text-white/40 text-sm mb-3">Pick up where you left off</p>
-                  <button
-                    onClick={() => navigate('/learn/courses')}
-                    className="px-4 py-2 bg-cyan-500/10 text-cyan-400 rounded-lg text-sm font-medium hover:bg-cyan-500/20 transition-colors flex items-center gap-2"
-                  >
-                    Continue <ChevronRight className="w-3 h-3" />
-                  </button>
-                </div>
-              </div>
-            )}
-
-            {/* Recommendations */}
-            {recommendations.length > 0 && (
-              <div className="bg-white/[0.03] border border-white/[0.06] rounded-xl p-5">
-                <h2 className="text-sm font-semibold text-white/60 mb-3 flex items-center gap-2">
-                  <Star className="w-4 h-4 text-amber-400" />
-                  RECOMMENDED NEXT
-                </h2>
-                <div className="space-y-2">
-                  {recommendations.slice(0, 3).map((rec, i) => (
-                    <div
-                      key={i}
-                      className="bg-white/[0.02] border border-white/[0.04] rounded-lg p-3 flex items-center justify-between"
-                    >
-                      <div className="flex-1 min-w-0">
-                        <div className="text-white text-sm font-medium truncate">{rec.title}</div>
-                        <div className="text-white/40 text-xs mt-0.5 truncate">{rec.reason}</div>
-                      </div>
-                      <button
-                        onClick={() => {
-                          if (rec.lessonId) navigate(`/learn/lesson/${rec.lessonId}`);
-                        }}
-                        className="ml-3 px-3 py-1.5 bg-white/5 text-white/70 rounded text-xs hover:bg-white/10 transition-colors shrink-0"
-                      >
-                        {rec.type === 'continue' ? 'Continue' : rec.type === 'review' ? 'Review' : 'Start'}
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
-
-            {/* Active Learning Path */}
-            {dashboard?.activePath && (
-              <div className="bg-white/[0.03] border border-white/[0.06] rounded-xl p-5">
-                <h2 className="text-sm font-semibold text-white/60 mb-3 flex items-center gap-2">
-                  <Route className="w-4 h-4 text-violet-400" />
-                  YOUR LEARNING PATH
-                </h2>
-                <button
-                  onClick={() => navigate(`/learn/path/${dashboard.activePath._id}`)}
-                  className="w-full bg-violet-500/5 border border-violet-500/10 rounded-lg p-4 text-left hover:bg-violet-500/10 transition-colors group"
-                >
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-white font-medium text-sm group-hover:text-violet-400 transition-colors">
-                      {dashboard.activePath.title}
-                    </span>
-                    <ChevronRight className="w-4 h-4 text-white/20 group-hover:text-violet-400" />
-                  </div>
-                  <div className="text-white/40 text-xs mb-2">{dashboard.activePath.description}</div>
-                </button>
-                <button
-                  onClick={() => navigate('/learn/paths')}
-                  className="mt-2 text-xs text-white/30 hover:text-white/50 transition-colors"
-                >
-                  Switch path →
-                </button>
-              </div>
-            )}
-
-            {/* No path selected */}
-            {!dashboard?.activePath && !loading && (
-              <div className="bg-white/[0.03] border border-white/[0.06] rounded-xl p-5">
-                <h2 className="text-sm font-semibold text-white/60 mb-3 flex items-center gap-2">
-                  <Route className="w-4 h-4 text-violet-400" />
-                  CHOOSE A LEARNING PATH
-                </h2>
-                <p className="text-white/40 text-xs mb-3">Pick a structured path to guide your learning</p>
-                <button
-                  onClick={() => navigate('/learn/paths')}
-                  className="px-4 py-2 bg-violet-500/10 text-violet-400 rounded-lg text-sm hover:bg-violet-500/20 transition-colors"
-                >
-                  Browse Paths
-                </button>
-              </div>
-            )}
-
-            {/* Courses */}
-            {courses.length > 0 && (
-              <div className="bg-white/[0.03] border border-white/[0.06] rounded-xl p-5">
-                <h2 className="text-sm font-semibold text-white/60 mb-3 flex items-center gap-2">
-                  <BookOpen className="w-4 h-4 text-emerald-400" />
-                  COURSES
-                </h2>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-                  {courses.slice(0, 4).map((course) => (
-                    <button
-                      key={course._id}
-                      onClick={() => navigate(`/learn/course/${course._id}`)}
-                      className="bg-white/[0.02] border border-white/[0.04] rounded-lg p-4 text-left hover:bg-white/[0.04] transition-colors"
-                    >
-                      <div className="text-white font-medium text-sm mb-1">{course.title}</div>
-                      <div className="flex items-center gap-2 mb-2">
-                        <DifficultyBadge level={course.difficulty} />
-                        <span className="text-white/30 text-xs">{course.totalLessons} lessons</span>
-                      </div>
-                      <div className="text-white/30 text-xs">~{course.estimatedMinutes}m</div>
-                    </button>
-                  ))}
-                </div>
-                {courses.length > 4 && (
-                  <button
-                    onClick={() => navigate('/learn/courses')}
-                    className="mt-3 text-xs text-cyan-400 hover:text-cyan-300"
-                  >
-                    View all {courses.length} courses →
-                  </button>
-                )}
-              </div>
-            )}
+        <ContinueBanner dashboard={dashboard} resume={resume} onContinue={handleContinue} />
+        {resume && !resume.hasProgress && (
+          <div className="mt-4 border border-white/[0.06] rounded-xl p-4 bg-white/[0.02] flex items-center justify-between">
+            <div className="text-sm text-white/60">Start your learning journey — choose a path below.</div>
+            <button onClick={() => document.getElementById('programming-languages')?.scrollIntoView({ behavior: 'smooth' })} className="text-xs text-cyan-400 hover:text-cyan-300">Explore →</button>
           </div>
+        )}
 
-          {/* Sidebar */}
-          <div className="space-y-6">
-            {/* Calendar */}
-            {calendar && (
-              <div className="bg-white/[0.03] border border-white/[0.06] rounded-xl p-5">
-                <h2 className="text-sm font-semibold text-white/60 mb-3 flex items-center gap-2">
-                  <Calendar className="w-4 h-4 text-cyan-400" />
-                  THIS WEEK
-                </h2>
-                <div className="flex justify-between">
-                  {calendar.days?.map((day) => (
-                    <div key={day.date} className="flex flex-col items-center gap-1">
-                      <span className="text-[10px] text-white/30">{day.day}</span>
-                      <div
-                        className={`w-7 h-7 rounded-full flex items-center justify-center text-xs ${
-                          day.active
-                            ? 'bg-cyan-500/20 text-cyan-400 border border-cyan-500/30'
-                            : 'bg-white/5 text-white/20'
-                        }`}
-                      >
-                        {day.active ? '✓' : '·'}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+        {/* Foundation status — proves API-driven, not hardcoded */}
+        {apiCategories && (
+          <div className="text-[11px] text-white/30 border border-white/[0.06] rounded-lg px-3 py-2 bg-white/[0.02]">Live API: {apiCategories.length} categories · {foundationTechs?.length || 0} technologies · {foundationPaths?.length || 0} paths</div>
+        )}
 
-            {/* Quick Actions */}
-            <div className="bg-white/[0.03] border border-white/[0.06] rounded-xl p-5">
-              <h2 className="text-sm font-semibold text-white/60 mb-3">QUICK ACTIONS</h2>
-              <div className="space-y-2">
-                <button
-                  onClick={() => navigate('/learn/courses')}
-                  className="w-full bg-white/[0.03] border border-white/[0.04] rounded-lg p-3 text-left text-white/70 text-sm hover:bg-white/[0.06] transition-colors flex items-center gap-2"
-                >
-                  <BookOpen className="w-4 h-4 text-emerald-400" />
-                  Browse Courses
-                </button>
-                <button
-                  onClick={() => navigate('/learn/paths')}
-                  className="w-full bg-white/[0.03] border border-white/[0.04] rounded-lg p-3 text-left text-white/70 text-sm hover:bg-white/[0.06] transition-colors flex items-center gap-2"
-                >
-                  <TrendingUp className="w-4 h-4 text-violet-400" />
-                  Learning Paths
-                </button>
-                <button
-                  onClick={() => navigate('/voxcode')}
-                  className="w-full bg-white/[0.03] border border-white/[0.04] rounded-lg p-3 text-left text-white/70 text-sm hover:bg-white/[0.06] transition-colors flex items-center gap-2"
-                >
-                  <Award className="w-4 h-4 text-amber-400" />
-                  Practice & Quiz
-                </button>
-              </div>
+        {/* Category nav — subtle tabs */}
+        <div className="mt-8 mb-6 border-y border-white/[0.06] py-3 flex gap-4 overflow-x-auto text-xs text-white/40">
+          {CATEGORIES.map(c => (
+            <a key={c.id} href={`#${c.anchor}`} className="hover:text-white whitespace-nowrap">{c.label}</a>
+          ))}
+        </div>
+
+        <div className="space-y-10">
+          <Section id="programming-languages" title="Programming Languages" subtitle="Pick a language. Learn it step by step." icon={Code2}>
+            <div className="grid gap-2">
+              {(foundationPaths ? foundationPaths.filter(p => p.category === 'programming_languages').filter(p => matches({ title: p.title, techs: (p.technologies||[]).map(t=>t.slug||t) }) && difficultyMatches({ difficulty: p.difficulty })) : PROGRAMMING_LANGUAGES.filter(s => matches({ title: s.techId, techs: [s.techId] }) && difficultyMatches({ difficulty: s.level.includes('Beginner') ? 'beginner' : s.level.includes('Intermediate') ? 'intermediate' : 'advanced' }))).map(item => {
+                // API-driven vs hardcoded
+                if (item.category) {
+                  const techSlug = item.technologies?.[0]?.slug || item.slug;
+                  const dropdownItem = { techId: techSlug, id: item.slug, level: `${item.difficulty}`, stages: item.stages?.length || 9, minutes: 300, prerequisite: item.prerequisites?.length > 0 };
+                  return (
+                    <TechnologyDropdown
+                      key={item.slug}
+                      item={dropdownItem}
+                      progress={0}
+                      onContinue={() => navigate(`/learn/path/${item._id}`)}
+                    />
+                  );
+                }
+                return (
+                  <TechnologyDropdown
+                    key={item.id}
+                    item={item}
+                    progress={0}
+                    onContinue={() => item.courseSlug ? goCourse(item.courseSlug) : navigate(`/learn/courses?search=${item.techId}`)}
+                  />
+                );
+              })}
             </div>
+          </Section>
 
-            {/* Empty State */}
-            {!inProgressCourse && recommendations.length === 0 && (
-              <div className="bg-white/[0.03] border border-white/[0.06] rounded-xl p-5 text-center">
-                <div className="text-white/20 text-2xl mb-2">📚</div>
-                <div className="text-white/40 text-sm mb-3">Start your learning journey</div>
-                <button
-                  onClick={() => navigate('/learn/courses')}
-                  className="px-4 py-2 bg-cyan-500/10 text-cyan-400 rounded-lg text-sm hover:bg-cyan-500/20 transition-colors"
-                >
-                  Browse Courses
-                </button>
-              </div>
-            )}
-          </div>
+          <Section id="frontend-development" title="Frontend Development" subtitle="Choose a stack — each is a complete learning path." icon={Layers}>
+            <div className="grid md:grid-cols-2 gap-3">
+              {(frontendApi.length ? frontendApi.filter(p => apiMatches(p) && apiDifficultyMatches(p)) : FRONTEND_STACKS.filter(s => matches(s) && difficultyMatches(s))).map(item => {
+                if (item.category) {
+                  return <LearningStackCard key={item._id} stack={{ title: item.title, techs: (item.technologies||[]).map(t=>t.slug), difficulty: item.difficulty, stages: item.stages?.length || 6, duration: item.estimatedDuration }} progress={0} onContinue={() => navigate(`/learn/path/${item._id}`)} onView={() => navigate(`/learn/path/${item._id}`)} />;
+                }
+                return <LearningStackCard key={item.id} stack={item} progress={0} onContinue={() => item.pathSlug ? goPath(item.pathSlug) : navigate(`/learn/courses`)} onView={() => item.pathSlug ? goPath(item.pathSlug) : navigate(`/learn/courses`)} />;
+              })}
+            </div>
+          </Section>
+
+          <Section id="backend-development" title="Backend Development" subtitle="Server, APIs, databases — pick your stack." icon={Layers}>
+            <div className="grid md:grid-cols-2 gap-3">
+              {(backendApi.length ? backendApi.filter(p => apiMatches(p) && apiDifficultyMatches(p)) : BACKEND_STACKS.filter(s => matches(s) && difficultyMatches(s))).map(item => {
+                if (item.category) {
+                  return <LearningStackCard key={item._id} stack={{ title: item.title, techs: (item.technologies||[]).map(t=>t.slug), difficulty: item.difficulty, stages: item.stages?.length || 6, duration: item.estimatedDuration }} progress={0} onContinue={() => navigate(`/learn/path/${item._id}`)} onView={() => navigate(`/learn/path/${item._id}`)} />;
+                }
+                return <LearningStackCard key={item.id} stack={item} progress={0} onContinue={() => item.pathSlug ? goPath(item.pathSlug) : navigate(`/learn/courses`)} onView={() => item.pathSlug ? goPath(item.pathSlug) : navigate(`/learn/courses`)} />;
+              })}
+            </div>
+          </Section>
+
+          <Section id="full-stack-development" title="Full Stack Development" subtitle="End-to-end stacks — frontend + backend + database." icon={Layers}>
+            <div className="grid md:grid-cols-2 gap-3">
+              {(fullstackApi.length ? fullstackApi.filter(p => apiMatches(p) && apiDifficultyMatches(p)) : []).map(p => (
+                <LearningStackCard key={p._id} stack={{ title: p.title, techs: (p.technologies||[]).map(t=>t.slug), difficulty: p.difficulty, stages: p.stages?.length || 6, duration: p.estimatedDuration }} progress={0} onContinue={() => navigate(`/learn/path/${p._id}`)} onView={() => navigate(`/learn/path/${p._id}`)} />
+              ))}
+              {fullstackApi.length === 0 && <div className="text-xs text-white/30">No full-stack paths yet — seed running.</div>}
+            </div>
+          </Section>
+
+          <Section id="mobile-development" title="Mobile Development" subtitle="Native and cross-platform." icon={Smartphone}>
+            <div className="grid md:grid-cols-2 gap-3">
+              {(mobileApi.length ? mobileApi.filter(p => apiMatches(p) && apiDifficultyMatches(p)) : MOBILE_STACKS.filter(s => matches(s) && difficultyMatches(s))).map(item => {
+                if (item.category) {
+                  return <LearningStackCard key={item._id} stack={{ title: item.title, techs: (item.technologies||[]).map(t=>t.slug), difficulty: item.difficulty, stages: item.stages?.length || 6, duration: item.estimatedDuration }} progress={0} onContinue={() => navigate(`/learn/path/${item._id}`)} onView={() => navigate(`/learn/path/${item._id}`)} />;
+                }
+                return <LearningStackCard key={item.id} stack={item} progress={0} onContinue={() => navigate('/learn/courses')} onView={() => navigate('/learn/paths')} />;
+              })}
+            </div>
+          </Section>
+
+          <Section id="databases" title="Databases" subtitle="SQL & NoSQL — individually or as part of a stack." icon={Database}>
+            <div className="grid gap-2">
+              {(databasesApi.length ? databasesApi.filter(p => apiMatches(p) && apiDifficultyMatches(p)) : DATABASES.filter(s => !normalizedQ || s.techId.includes(normalizedQ))).map(item => {
+                if (item.category) {
+                  const techSlug = item.technologies?.[0]?.slug || item.slug;
+                  return <TechnologyDropdown key={item._id} item={{ techId: techSlug, id: item.slug, level: item.difficulty, stages: 5, minutes: 120 }} progress={0} onContinue={() => navigate(`/learn/path/${item._id}`)} />;
+                }
+                return <TechnologyDropdown key={item.id} item={item} progress={0} onContinue={() => navigate(`/learn/courses?search=${item.techId}`)} />;
+              })}
+            </div>
+          </Section>
+
+          <Section id="tools" title="Tools & Other Technologies" subtitle="Supporting skills for every developer." icon={Wrench}>
+            <div className="divide-y divide-white/[0.06] border border-white/[0.06] rounded-lg overflow-hidden">
+              {TOOLS.filter(t => !normalizedQ || `${t.name} ${t.desc}`.toLowerCase().includes(normalizedQ)).map(t => (
+                <div key={t.id} className="flex items-center justify-between px-4 py-3 bg-white/[0.02] hover:bg-white/[0.04]">
+                  <div>
+                    <div className="text-sm text-white/80">{t.name}</div>
+                    <div className="text-xs text-white/40">{t.desc}</div>
+                  </div>
+                  <button onClick={() => navigate(`/learn/courses?search=${t.name}`)} className="text-xs text-white/60 hover:text-white">Learn →</button>
+                </div>
+              ))}
+            </div>
+          </Section>
+        </div>
+
+        <div className="mt-10 pt-6 border-t border-white/[0.06] flex flex-col sm:flex-row gap-3 text-xs text-white/40">
+          <button onClick={() => navigate('/learn/courses')} className="flex items-center gap-2 hover:text-white"><BookOpen className="w-3 h-3" /> Browse all courses</button>
+          <button onClick={() => navigate('/learn/paths')} className="flex items-center gap-2 hover:text-white"><Layers className="w-3 h-3" /> Browse all paths</button>
+          <span className="sm:ml-auto">{courses.length} courses · {learningPaths.length} paths</span>
         </div>
       </div>
     </div>
