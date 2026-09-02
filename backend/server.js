@@ -20,6 +20,8 @@ const assessmentRoutes = require("./routes/assessmentRoutes");
 const learningSetupRoutes = require("./routes/learningSetupRoutes");
 const learningFoundationRoutes = require("./routes/learningFoundationRoutes");
 const learningMemoryRoutes = require("./routes/learningMemoryRoutes");
+const adminRoutes = require("./routes/adminRoutes");
+const platformRoutes = require("./routes/platformRoutes");
 
 const app = express();
 
@@ -30,6 +32,7 @@ app.get("/api/test", (req, res) => {
   res.json({ message: "VoxCode backend is running" });
 });
 
+app.use("/api/platform", platformRoutes);
 app.use("/api/auth", authRoutes);
 
 // AI tutor routes (JWT protected)
@@ -76,6 +79,9 @@ app.use("/api/learning", learningFoundationRoutes);
 
 // Learning memory routes (JWT protected) — Step 5 persistent memory
 app.use("/api/learning/memory", learningMemoryRoutes);
+
+// Admin routes (JWT + admin role required)
+app.use("/api/admin", adminRoutes);
 
 // Project version routes (JWT protected) — must be before project routes
 app.use("/api/projects", versionRoutes);

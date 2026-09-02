@@ -1,5 +1,6 @@
 import { useState, useCallback, useRef, useEffect } from 'react';
-import { X, PanelLeftClose, PanelLeft, Send, Sparkles, Volume2, VolumeX, CheckCircle, AlertTriangle, Loader2, History } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { X, PanelLeftClose, PanelLeft, Send, Sparkles, Volume2, VolumeX, CheckCircle, AlertTriangle, Loader2, History, ArrowLeft } from 'lucide-react';
 import { useCodingWorkspace } from '../../context/CodingWorkspaceContext';
 import { useAI } from '../../context/AIContext';
 import { useVoice } from '../../context/VoiceContext';
@@ -17,6 +18,7 @@ import InsertOptionsDialog from './InsertOptionsDialog';
 import VersionHistoryPanel from './VersionHistoryPanel';
 import ProjectSelector from './ProjectSelector';
 import CreateProjectModal from './CreateProjectModal';
+import ExercisePanel from './ExercisePanel';
 
 export default function CodeWorkspace({ isOpen, onClose }) {
   const {
@@ -43,6 +45,9 @@ export default function CodeWorkspace({ isOpen, onClose }) {
   const [showGenerateInput, setShowGenerateInput] = useState(false);
   const [versionHistoryOpen, setVersionHistoryOpen] = useState(false);
   const [createProjectOpen, setCreateProjectOpen] = useState(false);
+  const [exercise, setExercise] = useState(null);
+  const [exerciseLesson, setExerciseLesson] = useState(null);
+  const navigate = useNavigate();
 
   const editorRef = useRef(null);
   const generateInputRef = useRef(null);
@@ -114,12 +119,36 @@ export default function CodeWorkspace({ isOpen, onClose }) {
     return () => { if (syncTimerRef.current) clearTimeout(syncTimerRef.current); };
   }, []);
 
-  // ─── AI actions (project-aware) ───
+  // ─── Exercise context: load when workspace opens from lesson ───
+  useEffect(() => {
+    if (!isOpen) return;
+    try {
+      const raw = localStorage.getItem('voxcode:practiceLesson');
+      if (raw) {
+        const data = JSON.parse(raw);
+        setExerciseLesson(data);
+        setExercise({
+          title: data.title || 'Exercise',
+          instructions: data.objective || `Practice for ${data.title}`,
+          requirements: [],
+        });
+      } else {
+        setExercise(null);
+        setExerciseLesson(null);
+      }
+    } catch {
+      setExercise(null);
+    }
+  }, [isOpen]);
+
+  // ─── AI actions (project-aware + code context) ───
   const handleAction = useCallback((actionId) => {
     const code = selectedCode || activeFileData?.content || '';
     const lang = activeFileData?.language || 'javascript';
     const filename = activeFile || 'untitled';
     const projectContext = currentProject ? `Project: ${currentProject.name}\n` : '';
+    let practiceLesson = null;
+    try { const raw = localStorage.getItem('voxcode:practiceLesson'); if (raw) practiceLesson = JSON.parse(raw); } catch {}
 
     if (actionId === 'generate') {
       setShowGenerateInput(true);
@@ -152,8 +181,19 @@ export default function CodeWorkspace({ isOpen, onClose }) {
       default:
         return;
     }
-    sendMessage(prompt, 'text');
-  }, [selectedCode, activeFileData, activeFile, currentProject, sendMessage]);
+    sendMessage(prompt, 'text', {
+      codingContext: {
+        activeFile: filename,
+        language: lang,
+        selectedCode: selectedCode || undefined,
+        currentCode: code || undefined,
+        projectFiles: currentProject ? Object.keys(files) : undefined,
+        projectId: currentProject?._id,
+        lessonId: practiceLesson?.lessonId,
+      },
+      lessonId: practiceLesson?.lessonId,
+    });
+  }, [selectedCode, activeFileData, activeFile, currentProject, files, sendMessage]);
 
   const handleGenerateSubmit = useCallback(() => {
     const description = generateInput.trim();
@@ -173,8 +213,20 @@ export default function CodeWorkspace({ isOpen, onClose }) {
 
     setShowGenerateInput(false);
     setGenerateInput('');
-    sendMessage(prompt, 'text');
-  }, [generateInput, activeFileData, activeFile, currentProject, sendMessage]);
+    let practiceLesson2 = null;
+    try { const raw = localStorage.getItem('voxcode:practiceLesson'); if (raw) practiceLesson2 = JSON.parse(raw); } catch {}
+    sendMessage(prompt, 'text', {
+      codingContext: {
+        activeFile: filename,
+        language: lang,
+        currentCode: code || undefined,
+        projectFiles: currentProject ? Object.keys(files) : undefined,
+        projectId: currentProject?._id,
+        lessonId: practiceLesson2?.lessonId,
+      },
+      lessonId: practiceLesson2?.lessonId,
+    });
+  }, [generateInput, activeFileData, activeFile, currentProject, files, sendMessage]);
 
   const handleEditorSelect = useCallback((text) => {
     setSelectedCode(text);
@@ -222,6 +274,11 @@ export default function CodeWorkspace({ isOpen, onClose }) {
     }
   }, [currentProject?._id, loadProjectFiles, fetchVersions]);
 
+  const handleCloseWithCheck = useCallback(() => {
+    if (saveStatus === 'unsaved' && !window.confirm('You have unsaved changes. Leave without saving?')) return;
+    onClose();
+  }, [saveStatus, onClose]);
+
   if (!isOpen) return null;
 
   return (
@@ -236,6 +293,22 @@ export default function CodeWorkspace({ isOpen, onClose }) {
           >
             {sidebarOpen ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeft className="h-4 w-4" />}
           </button>
+          {exerciseLesson && (
+            <button
+              type="button"
+              onClick={() => {
+                if (saveStatus === 'unsaved' && !window.confirm('You have unsaved changes. Leave without saving?')) return;
+                navigate(`/learn/lesson/${exerciseLesson.lessonId}`);
+                setExercise(null);
+                setExerciseLesson(null);
+                try { localStorage.removeItem('voxcode:practiceLesson'); } catch {}
+                onClose();
+              }}
+              className="flex items-center gap-1.5 rounded-lg border border-cyan-400/20 bg-cyan-400/10 px-2.5 py-1 text-xs text-cyan-300 hover:bg-cyan-400/20 transition-colors"
+            >
+              <ArrowLeft className="h-3 w-3" /> Back to Lesson
+            </button>
+          )}
           <ProjectSelector onCreateNew={() => setCreateProjectOpen(true)} />
           <span className="text-[10px] text-white/20 hidden sm:inline">
             {fileList.filter(f => !files[f]?.isFolder).length} file{fileList.filter(f => !files[f]?.isFolder).length !== 1 ? 's' : ''}
@@ -280,7 +353,7 @@ export default function CodeWorkspace({ isOpen, onClose }) {
           </button>
           <button
             type="button"
-            onClick={onClose}
+            onClick={handleCloseWithCheck}
             className="rounded-lg p-1.5 text-white/30 hover:text-red-400 transition-colors"
             aria-label="Close workspace"
           >
@@ -323,6 +396,22 @@ export default function CodeWorkspace({ isOpen, onClose }) {
           mobileTab !== 'code' ? 'hidden lg:flex' : 'flex'
         }`}>
           <FileTabs />
+          {exercise && (
+            <ExercisePanel
+              exercise={exercise}
+              lesson={exerciseLesson}
+              projectId={currentProject?._id}
+              activeFile={activeFile}
+              activeFileContent={activeFileData?.content}
+              onAskAI={(msg, code, error) => {
+                sendMessage(msg, 'text', {
+                  lessonId: exerciseLesson?.lessonId,
+                  codingContext: { activeFile, currentCode: code, error, projectId: currentProject?._id },
+                });
+                setMobileTab('ai');
+              }}
+            />
+          )}
           <EditorToolbar
             onAction={handleAction}
             isThinking={isThinking}

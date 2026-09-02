@@ -2,6 +2,7 @@ const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const { OAuth2Client } = require("google-auth-library");
 const User = require("../models/User");
+const PlatformSettings = require("../models/PlatformSettings");
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -14,12 +15,34 @@ function getGoogleClient() {
 }
 
 function publicUser(user) {
+  const isSuper = user.role === "super_admin";
+  const perms = isSuper
+    ? {
+        viewUsers: true,
+        viewProgress: true,
+        viewAIUsage: true,
+        deleteUsers: true,
+        manageAdmins: true,
+        manageSettings: true,
+      }
+    : user.role === "admin"
+      ? { ...user.adminPermissions }
+      : {
+          viewUsers: false,
+          viewProgress: false,
+          viewAIUsage: false,
+          deleteUsers: false,
+          manageAdmins: false,
+          manageSettings: false,
+        };
   return {
     id: user._id,
     name: user.name,
     email: user.email,
     avatar: user.avatar || null,
     authProvider: user.authProvider || "local",
+    role: user.role || "student",
+    permissions: perms,
   };
 }
 
@@ -64,17 +87,29 @@ async function register(req, res) {
   }
 
   try {
+    // Registration control — checked server-side so hiding the form is not enough
+    try {
+      const settings = await PlatformSettings.getSettings();
+      if (settings.allowRegistration === false) {
+        return res.status(403).json({ message: "New student registration is currently disabled." });
+      }
+    } catch (_) {
+      // if settings lookup fails, allow registration (fail open for college project)
+    }
+
     const existing = await User.findOne({ email });
     if (existing) {
       return res.status(409).json({ message: "An account with this email already exists" });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
+    // Always create as student — ignore any role/permissions from client
     const user = await User.create({
       name,
       email,
       password: hashedPassword,
       authProvider: "local",
+      role: "student",
     });
 
     return res.status(201).json({
@@ -93,13 +128,14 @@ async function register(req, res) {
 async function login(req, res) {
   const email = (req.body.email || "").trim().toLowerCase();
   const password = req.body.password || "";
+  const isAdminLogin = req.body.isAdminLogin === true || req.body.loginType === "admin" || req.body.role === "admin";
 
   if (!email || !password) {
     return res.status(400).json({ message: "Email and password are required" });
   }
 
   try {
-    const user = await User.findOne({ email });
+    const user = await User.findOne({ email }).select("+password");
     if (!user) {
       return res.status(401).json({ message: "Invalid email or password." });
     }
@@ -112,6 +148,16 @@ async function login(req, res) {
     if (!passwordMatches) {
       return res.status(401).json({ message: "Invalid email or password." });
     }
+
+    if (isAdminLogin) {
+      if (user.role !== "admin" && user.role !== "super_admin") {
+        return res.status(403).json({ message: "You do not have administrator access." });
+      }
+    }
+
+    // Update lastUsedAt on successful login
+    user.lastUsedAt = new Date();
+    await user.save();
 
     const token = signToken(user);
 

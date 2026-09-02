@@ -30,6 +30,14 @@ export function useVoice() {
   return ctx;
 }
 
+export const STATES = {
+  IDLE: 'idle',
+  LISTENING: 'listening',
+  PROCESSING: 'thinking',
+  SPEAKING: 'speaking',
+  ERROR: 'error',
+};
+
 export function VoiceProvider({ children }) {
   const [interactionState, setInteractionState] = useState('idle');
   const [transcript, setTranscript] = useState('');
@@ -42,6 +50,7 @@ export function VoiceProvider({ children }) {
   const finalTextRef = useRef('');
   const gotResultRef = useRef(false);
   const endingRef = useRef(false);
+  const hasErrorRef = useRef(false);
 
   // handler registered by AIContext — receives finalized voice transcripts
   const finalHandlerRef = useRef(null);
@@ -182,9 +191,13 @@ export function VoiceProvider({ children }) {
     finalTextRef.current = '';
     setTranscript(said);
 
-    if (!said && !gotResultRef.current) {
+    if (!said && !gotResultRef.current && !hasErrorRef.current) {
       setErrorMessage(friendlyRecognitionError('no-speech'));
       setInteractionState('error');
+      return;
+    }
+    if (hasErrorRef.current) {
+      hasErrorRef.current = false;
       return;
     }
 
@@ -210,6 +223,7 @@ export function VoiceProvider({ children }) {
     setSpokenMessageId(null);
     setTranscript('');
     setErrorMessage('');
+    hasErrorRef.current = false;
     finalTextRef.current = '';
     gotResultRef.current = false;
     setInteractionState('listening');
@@ -224,8 +238,13 @@ export function VoiceProvider({ children }) {
         setTranscript(`${finalText} ${interimText}`.trim());
         setInteractionState((s) => (s === 'listening' ? 'transcribing' : s));
       },
-      onError: () => {
-        /* handled in onEnd via friendly mapping */
+      onError: (evt) => {
+        const code = typeof evt === 'string' ? evt : evt?.error || evt?.code || evt?.type || 'unknown';
+        const msg = friendlyRecognitionError(code);
+        hasErrorRef.current = true;
+        try { recognizerRef.current?.abort?.(); } catch {}
+        setErrorMessage(msg);
+        setInteractionState('error');
       },
       onEnd: () => {
         finalizeSession({ deliver: true });

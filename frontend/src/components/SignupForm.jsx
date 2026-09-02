@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect } from 'react'
 import { Link, useNavigate } from 'react-router-dom'
 import { User, Mail, Lock, Eye, EyeOff, ArrowRight, Loader2, CheckCircle2, AlertTriangle } from 'lucide-react'
 import api from '../services/api'
@@ -47,7 +47,14 @@ function SignupForm() {
   const [loading, setLoading] = useState(false)
   const [done, setDone] = useState(false)
   const [formError, setFormError] = useState(null)
+  const [registrationClosed, setRegistrationClosed] = useState(false)
   const navigate = useNavigate()
+
+  useEffect(() => {
+    api.get('/platform/status').then((r) => {
+      if (r.data.allowRegistration === false) setRegistrationClosed(true)
+    }).catch(() => {})
+  }, [])
 
   const update = (key) => (e) => {
     setValues((v) => ({ ...v, [key]: e.target.value }))
@@ -78,6 +85,10 @@ function SignupForm() {
 
   const handleSubmit = async (e) => {
     e.preventDefault()
+    if (registrationClosed) {
+      setFormError("New student registration is currently disabled.")
+      return
+    }
     if (!validate()) return
     setLoading(true)
     setFormError(null)
@@ -105,6 +116,12 @@ function SignupForm() {
 
   return (
     <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
+      {registrationClosed && (
+        <div className="flex items-start gap-2.5 rounded-lg border border-amber-400/20 bg-amber-400/10 px-4 py-3 text-sm text-amber-200">
+          <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-300" />
+          <p>New student registration is currently disabled.</p>
+        </div>
+      )}
       <div>
         <input
           type="text"
@@ -210,7 +227,7 @@ function SignupForm() {
 
       <button
         type="submit"
-        disabled={loading || done}
+        disabled={loading || done || registrationClosed}
         className="group relative mt-2 overflow-hidden rounded-lg border border-cyan-400/40 bg-gradient-to-r from-cyan-500/25 via-blue-500/25 to-cyan-500/25 py-3.5 text-sm font-semibold tracking-[0.2em] text-cyan-50 uppercase transition-all duration-300 hover:scale-[1.02] hover:border-cyan-300/80 hover:from-cyan-400/40 hover:via-blue-400/40 hover:to-cyan-400/40 hover:shadow-[0_0_34px_-4px_rgba(34,211,238,0.6)] active:scale-[0.99] disabled:cursor-not-allowed"
       >
         <span className="absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-cyan-300/80 to-transparent" />

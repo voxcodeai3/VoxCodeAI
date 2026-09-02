@@ -1,6 +1,8 @@
 import { BrowserRouter, Routes, Route, Navigate } from 'react-router-dom'
+import { useEffect, useState } from 'react'
 import { AuthProvider, useAuth } from './context/AuthContext'
 import { VoiceProvider } from './context/VoiceContext'
+import api from './services/api'
 import { ConversationProvider } from './context/ConversationContext'
 import { LearnerProfileProvider } from './context/LearnerProfileContext'
 import { CodingWorkspaceProvider } from './context/CodingWorkspaceContext'
@@ -30,11 +32,48 @@ import AssessmentList from './pages/AssessmentList'
 import AssessmentPlayer from './pages/AssessmentPlayer'
 import AssessmentResults from './pages/AssessmentResults'
 import HomePage from './pages/HomePage'
+import Admin from './pages/Admin'
+
+function MaintenanceScreen() {
+  return (
+    <div className="min-h-screen bg-[#010208] flex items-center justify-center p-4">
+      <div className="max-w-md w-full rounded-2xl border border-amber-400/15 bg-amber-500/[0.04] p-8 text-center">
+        <div className="h-12 w-12 rounded-xl bg-amber-500/10 border border-amber-400/20 flex items-center justify-center mx-auto mb-4">
+          <span className="text-amber-300 text-xl">🛠</span>
+        </div>
+        <h2 className="text-white font-semibold mb-2">Maintenance Mode</h2>
+        <p className="text-white/50 text-sm leading-relaxed">VoxCode is temporarily unavailable for maintenance. Please try again later.</p>
+      </div>
+    </div>
+  )
+}
 
 function ProtectedRoute({ children }) {
   const { user, loading } = useAuth()
+  const [maintenance, setMaintenance] = useState(null)
+  const [checkingMaint, setCheckingMaint] = useState(true)
+
+  useEffect(() => {
+    if (loading) return
+    if (!user) { setCheckingMaint(false); return }
+    if (user.role === 'admin' || user.role === 'super_admin') { setCheckingMaint(false); return }
+    api.get('/platform/status').then((r) => {
+      setMaintenance(r.data?.maintenanceMode === true)
+      setCheckingMaint(false)
+    }).catch(() => setCheckingMaint(false))
+  }, [user, loading])
+
+  if (loading || checkingMaint) return <AuthLoading />
+  if (!user) return <Navigate to="/login" replace />
+  if (maintenance) return <MaintenanceScreen />
+  return children
+}
+
+function ProtectedAdminRoute({ children }) {
+  const { user, loading } = useAuth()
   if (loading) return <AuthLoading />
   if (!user) return <Navigate to="/login" replace />
+  if (user.role !== 'admin' && user.role !== 'super_admin') return <Navigate to="/voxcode" replace />
   return children
 }
 
@@ -202,6 +241,14 @@ function App() {
               <ProtectedRoute>
                 <AssessmentResults />
               </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/admin"
+            element={
+              <ProtectedAdminRoute>
+                <Admin />
+              </ProtectedAdminRoute>
             }
           />
           <Route path="*" element={<HomeRedirect />} />

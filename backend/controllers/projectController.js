@@ -875,6 +875,46 @@ async function exportProject(req, res) {
   }
 }
 
+async function runCode(req, res) {
+  try {
+    const userId = req.user.id;
+    const { id } = req.params;
+    const { filePath } = req.body;
+    const project = await Project.findProject(userId, id);
+    if (!project) return res.status(404).json({ message: "Project not found." });
+    const targetPath = filePath ? normalizePath(filePath) : project.activeFile;
+    if (!targetPath) return res.status(400).json({ message: "No file to run." });
+    const file = (project.files || []).find(f => f.path === targetPath && !f.isFolder);
+    if (!file) return res.status(404).json({ message: "File not found." });
+    const content = file.content || "";
+    const lang = file.language || detectLang(file.name);
+    // Simple JS execution via vm, others return placeholder
+    if (lang === "javascript" || lang === "plaintext" && file.name.endsWith(".js")) {
+      const vm = require("vm");
+      let output = "";
+      let error = null;
+      const sandbox = {
+        console: { log: (...args) => { output += args.map(a => typeof a === "object" ? JSON.stringify(a) : String(a)).join(" ") + "\n"; } },
+        setTimeout, setInterval, clearTimeout, clearInterval,
+      };
+      try {
+        const script = new vm.Script(content, { timeout: 2000 });
+        const context = vm.createContext(sandbox);
+        const result = script.runInContext(context, { timeout: 2000 });
+        if (result !== undefined) output += String(result) + "\n";
+      } catch (e) {
+        error = e.message;
+      }
+      return res.json({ output: output.trim(), error, language: lang, file: targetPath });
+    }
+    // For other languages, return content preview as output
+    return res.json({ output: `Executed ${file.name} (${lang}) — preview:\n${content.slice(0,500)}`, error: null, language: lang, file: targetPath });
+  } catch (err) {
+    console.error("Run code error:", err.message);
+    return res.status(500).json({ message: "Failed to run code." });
+  }
+}
+
 module.exports = {
   createProject,
   listProjects,
@@ -891,6 +931,7 @@ module.exports = {
   renameFileFolder,
   deleteFileFolder,
   moveFileFolder,
+  runCode,
   upload,
   TEMPLATES,
 };

@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
-import { Mic, Square, LogOut, Code2, BarChart3, BookOpen } from 'lucide-react';
+import { Mic, Square, LogOut, Code2, BarChart3, BookOpen, Volume2, VolumeX } from 'lucide-react';
 import VoiceWeave from '../components/voice/VoiceWeave';
 import HorizontalWaveform from '../components/voice/HorizontalWaveform';
 import StarField from '../components/voice/StarField';
@@ -18,8 +18,8 @@ const STATUS_MAP = {
   idle:         { title: 'READY WHEN YOU ARE', subtitle: 'How can I help you today?', dots: false },
   listening:    { title: "I'M LISTENING",      subtitle: 'Listening for your command...', dots: true },
   transcribing: { title: "I'M LISTENING",      subtitle: '', dots: true },
-  thinking:     { title: 'THINKING...',        subtitle: 'Processing your request...', dots: false },
-  speaking:     { title: 'SPEAKING...',        subtitle: 'VoxCode is speaking...', dots: false },
+  thinking:     { title: 'PROCESSING',         subtitle: 'Thinking...', dots: false },
+  speaking:     { title: 'SPEAKING',           subtitle: 'VoxCode is explaining...', dots: false },
   error:        { title: 'HMM, TRY AGAIN',     subtitle: '', dots: false },
 };
 
@@ -86,6 +86,9 @@ export default function VoxCode() {
     support,
     startListening,
     stopListening,
+    stopSpeaking,
+    voiceEnabled,
+    toggleVoice: toggleVoiceOutput,
   } = useVoice();
   const { activeAction, triggerQuickAction } = useAI();
   const { interviewState, viewInterview } = useInterview();
@@ -114,10 +117,13 @@ export default function VoxCode() {
     subtitle = errorMessage;
   }
 
-  // Tap to start / tap to finalize what you said.
-  const toggleVoice = () => {
+  // Tap to start / tap to finalize, allows interrupting AI speech
+  const toggleMic = () => {
     if (isListening) stopListening();
-    else if (!isThinking && !isSpeaking) startListening();
+    else {
+      if (isSpeaking) stopSpeaking();
+      if (!isThinking) startListening();
+    }
   };
 
   const voiceUnavailable = !support.speech;
@@ -169,6 +175,17 @@ export default function VoxCode() {
       <div className="absolute left-4 top-4 z-30">
         <HistoryButton onClick={() => setIsHistoryOpen(true)} />
       </div>
+
+      {/* ── voice output toggle ── */}
+      <button
+        type="button"
+        onClick={toggleVoiceOutput}
+        aria-label={voiceEnabled ? 'Turn voice off' : 'Turn voice on'}
+        title={voiceEnabled ? 'Voice: ON — click to mute' : 'Voice: OFF — click to enable'}
+        className={`absolute right-16 top-4 z-30 rounded-full border p-2.5 backdrop-blur-md transition-all duration-300 active:scale-95 ${voiceEnabled ? 'border-[#305080]/20 bg-[#050814]/50 text-[#60a0e0]/60 hover:border-[#5080c0]/40 hover:text-[#80c0ff]/80' : 'border-amber-500/20 bg-amber-500/10 text-amber-400/60 hover:text-amber-400'}`}
+      >
+        {voiceEnabled ? <Volume2 className="h-3.5 w-3.5" /> : <VolumeX className="h-3.5 w-3.5" />}
+      </button>
 
       {/* ── logout (right) ── */}
       <button
@@ -256,6 +273,15 @@ export default function VoxCode() {
           >
             {subtitle}
           </p>
+          {interactionState === 'error' && (
+            <button
+              type="button"
+              onClick={startListening}
+              className="mt-2 px-3 py-1.5 rounded-full border border-amber-500/20 bg-amber-500/10 text-xs text-amber-300 hover:bg-amber-500/20 transition-colors"
+            >
+              Try Again
+            </button>
+          )}
 
           {/* divider */}
           <div className="relative mt-6 h-px w-52 md:w-80">
@@ -274,12 +300,13 @@ export default function VoxCode() {
             />
           </div>
 
-          {/* microphone button */}
+          {/* microphone button — interruptible */}
           <button
             type="button"
-            onClick={toggleVoice}
-            disabled={isThinking || isSpeaking || voiceUnavailable}
-            aria-label={isListening ? 'Stop listening' : interactionState === 'idle' ? 'Start speaking' : stateConfig.title}
+            onClick={toggleMic}
+            disabled={isThinking || voiceUnavailable}
+            aria-label={isListening ? 'Stop listening' : isSpeaking ? 'Interrupt and speak' : interactionState === 'idle' ? 'Start speaking' : stateConfig.title}
+            aria-pressed={isListening}
             className={`group relative mt-7 flex h-16 w-16 items-center justify-center rounded-full border backdrop-blur-xl transition-all duration-500 hover:scale-[1.06] active:scale-95 disabled:pointer-events-none disabled:opacity-40 md:h-[72px] md:w-[72px] ${isListening ? 'border-[#7f97ff]/60' : 'border-[#5a67df]/30 hover:border-[#8b93ff]/60'}`}
             style={{
               background: 'rgba(8,12,28,0.55)',

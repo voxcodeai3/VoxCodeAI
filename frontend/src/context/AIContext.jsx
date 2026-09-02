@@ -200,6 +200,8 @@ export function AIProvider({ children }) {
           level: overrides.level || settings.level,
           teachingMode: effectiveMode,
           codingContext: overrides.codingContext || undefined,
+          lessonId: overrides.lessonId || undefined,
+          projectId: overrides.projectId || overrides.codingContext?.projectId || undefined,
         });
 
         const finalMode = applyPreference(data.responseMode, preference);

@@ -25,13 +25,15 @@ async function buildLearningContext(userId, { lessonId, projectId, question }) {
   let currentStage = null;
   let currentPath = null;
   let topic = null;
+  let currentTechnology = null;
 
   const targetLessonId = lessonId || memory?.currentLesson;
   if (targetLessonId) {
     try {
       currentLesson = await Lesson.findById(targetLessonId).lean();
       if (currentLesson) {
-        if (currentLesson.topic) topic = await Topic.findById(currentLesson.topic).lean();
+        if (currentLesson.topic) topic = await Topic.findById(currentLesson.topic).populate("technologies").lean();
+        if (topic?.technologies?.length) currentTechnology = topic.technologies[0];
         // resolve stage via topic or via lesson's old module field
         const stageId = topic?.stage || memory?.currentStage;
         if (stageId) currentStage = await Stage.findById(stageId).lean();
@@ -44,6 +46,7 @@ async function buildLearningContext(userId, { lessonId, projectId, question }) {
           } catch {
             try { currentPath = await LearningPath.findById(pathId).lean(); } catch {}
           }
+          if (!currentTechnology && currentPath?.technologies?.length) currentTechnology = currentPath.technologies[0];
         }
       }
     } catch {}
@@ -132,6 +135,7 @@ async function buildLearningContext(userId, { lessonId, projectId, question }) {
     studentLevel: profile?.experienceLevel || "beginner",
     preferredTeachingStyle: profile?.preferredTeachingStyle || "step_by_step",
     // current state
+    currentTechnology: currentTechnology ? { name: currentTechnology.name || currentTechnology.slug, type: currentTechnology.type } : null,
     learningPath: currentPath ? { title: currentPath.title, technologies: (currentPath.technologies||[]).map(t=>t.name||t.slug||t), category: currentPath.category } : null,
     currentStage: currentStage ? { title: currentStage.title, level: currentStage.level } : null,
     currentLesson: currentLesson ? { title: currentLesson.title, objective: currentLesson.objective, prerequisites: currentLesson.prerequisites, estimatedMinutes: currentLesson.estimatedMinutes, type: currentLesson.type } : null,
@@ -157,6 +161,7 @@ function contextToPrompt(context) {
   if (!context || Object.keys(context).length <= 1) return "";
   const parts = [];
   if (context.studentLevel) parts.push(`Student level: ${context.studentLevel}`);
+  if (context.currentTechnology) parts.push(`Current Technology: ${context.currentTechnology.name} (${context.currentTechnology.type})`);
   if (context.learningPath) parts.push(`Learning Path: ${context.learningPath.title} (${(context.learningPath.technologies||[]).join(", ")})`);
   if (context.currentStage) parts.push(`Current Stage: ${context.currentStage.title} (${context.currentStage.level})`);
   if (context.currentLesson) parts.push(`Current Lesson: ${context.currentLesson.title} — Objective: ${context.currentLesson.objective || "learn concept"}`);

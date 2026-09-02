@@ -55,12 +55,13 @@ export default function LearningPathDetail() {
   };
 
   const handleSetActive = async () => {
+    if (!path?._id) return;
     setSetting(true);
     await setActivePath(path._id);
     setSetting(false);
   };
 
-  const isActivePath = dashboard?.activePath?._id === path._id;
+  const isActivePath = dashboard?.activePath?._id === path?._id;
 
   if (loading && !path) {
     return (

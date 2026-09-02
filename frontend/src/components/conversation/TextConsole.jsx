@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { Maximize, Minus, X, MessageCircle, Microchip, Trash2, User, BookOpen, Mic } from 'lucide-react';
+import { Maximize, Minus, X, MessageCircle, Microchip, Trash2, User, BookOpen, Mic, Volume2, VolumeX } from 'lucide-react';
 import ConversationPanel from './ConversationPanel';
 import MessageComposer from './MessageComposer';
 import { useAI } from '../../context/AIContext';
+import { useVoice } from '../../context/VoiceContext';
 import { useConversations } from '../../context/ConversationContext';
 import LearnerProfilePanel from '../learner/LearnerProfilePanel';
 import LearningWorkspace from '../learning/LearningWorkspace';
@@ -18,6 +19,7 @@ function TextConsole({ expanded = false }) {
   const [isInterviewOpen, setIsInterviewOpen] = useState(false);
   const [isPracticeOpen, setIsPracticeOpen] = useState(false);
   const { messages, isThinking, clearConversation, loadConversationMessages, openPractice, clearOpenPractice, practiceMode } = useAI();
+  const { voiceEnabled, toggleVoice, support } = useVoice();
   const { activeConversationId } = useConversations();
   const { session: activeSession } = useLearning();
   const { session: activeInterview, showResults: interviewShowResults } = useInterview();
@@ -80,7 +82,7 @@ function TextConsole({ expanded = false }) {
         </div>
       )}
       {isExpanded && (
-        <div className="w-[70vw] h-[80vh] max-w-[900px] max-h-[700px] rounded-3xl border border-cyan-400/20 bg-[#040a14]/85 backdrop-blur-2xl flex flex-col overflow-hidden transition-all duration-500">
+        <div className="w-[calc(100vw-32px)] sm:w-[70vw] h-[80vh] max-w-[900px] max-h-[700px] rounded-3xl border border-cyan-400/20 bg-[#040a14]/85 backdrop-blur-2xl flex flex-col overflow-hidden transition-all duration-500" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
           <div className="flex items-center justify-between border-b border-cyan-400/10 px-6 py-4">
             <div className="flex items-center gap-3">
               <div className="h-10 w-10 rounded-full border border-cyan-400/20 bg-cyan-400/10 flex items-center justify-center">
@@ -95,6 +97,15 @@ function TextConsole({ expanded = false }) {
               </div>
             </div>
             <div className="flex items-center gap-3">
+              <button
+                type="button"
+                onClick={toggleVoice}
+                aria-label={voiceEnabled ? 'Mute voice' : 'Enable voice'}
+                title={voiceEnabled ? 'Voice: ON' : 'Voice: OFF'}
+                className={`rounded-lg p-1.5 transition-colors ${voiceEnabled ? 'text-cyan-400/60 hover:text-cyan-400' : 'text-amber-400 hover:text-amber-300'}`}
+              >
+                {voiceEnabled ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
+              </button>
               <button
                 type="button"
                 onClick={() => setIsInterviewOpen(true)}

@@ -2,6 +2,7 @@ const mongoose = require("mongoose");
 const Conversation = require("../models/Conversation");
 const LearnerProfile = require("../models/LearnerProfile");
 const LearningMemory = require("../models/LearningMemory");
+const User = require("../models/User");
 const { generateResponse, generateQuestion, evaluateAnswer } = require("../services/aiService");
 const { modelManager } = require("../services/modelManager");
 const {
@@ -250,6 +251,17 @@ async function chat(req, res) {
     }
 
     await conversation.save();
+
+    // Track AI usage on the user document
+    try {
+      const usageField = inputMode === "voice" ? "aiUsage.voice" : "aiUsage.text";
+      await User.findByIdAndUpdate(userId, {
+        $inc: { "aiUsage.total": 1, [usageField]: 1 },
+        $set: { "aiUsage.lastUsedAt": new Date(), lastUsedAt: new Date() },
+      });
+    } catch (e) {
+      console.log("AI usage tracking failed (non-fatal):", e.message);
+    }
 
     // Save learner profile updates (conservative — only changed if new signals were found).
     if (signals) {

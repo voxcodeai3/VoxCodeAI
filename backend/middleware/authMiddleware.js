@@ -25,7 +25,14 @@ async function authMiddleware(req, res, next) {
     if (!user) {
       return res.status(401).json({ message: "Invalid or expired session. Please log in again." });
     }
-    req.user = { id: user._id, name: user.name, email: user.email };
+    req.user = {
+      id: user._id,
+      name: user.name,
+      email: user.email,
+      role: user.role || "student",
+      permissions: typeof user.getEffectivePermissions === "function" ? user.getEffectivePermissions() : {},
+      _userDoc: user,
+    };
     next();
   } catch (error) {
     console.error("Auth middleware error:", error);

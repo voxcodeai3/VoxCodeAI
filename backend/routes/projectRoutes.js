@@ -17,6 +17,7 @@ const {
   renameFileFolder,
   deleteFileFolder,
   moveFileFolder,
+  runCode,
   upload,
   TEMPLATES,
 } = require("../controllers/projectController");
@@ -44,5 +45,6 @@ router.post("/:id/files", authMiddleware, createFileInProject);
 router.patch("/:id/rename/:filePath", authMiddleware, renameFileFolder);
 router.delete("/:id/delete/:filePath", authMiddleware, deleteFileFolder);
 router.patch("/:id/move/:filePath", authMiddleware, moveFileFolder);
+router.post("/:id/run", authMiddleware, runCode);
 
 module.exports = router;

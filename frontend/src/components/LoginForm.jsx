@@ -44,6 +44,7 @@ function LoginForm({ onInteraction }) {
   const [loading, setLoading] = useState(false)
   const [done, setDone] = useState(false)
   const [formError, setFormError] = useState(null)
+  const [loginMode, setLoginMode] = useState('student')
   const navigate = useNavigate()
 
   const update = (key) => (e) => {
@@ -77,11 +78,14 @@ function LoginForm({ onInteraction }) {
       const res = await api.post('/auth/login', {
         email: values.email.trim(),
         password: values.password,
+        isAdminLogin: loginMode === 'admin',
       })
       login({ token: res.data.token, user: res.data.user }, remember)
       setLoading(false)
       setDone(true)
-      setTimeout(() => navigate('/voxcode', { replace: true }), 700)
+      const isAdmin = res.data.user?.role === 'admin' || res.data.user?.role === 'super_admin'
+      const target = loginMode === 'admin' && isAdmin ? '/admin' : '/voxcode'
+      setTimeout(() => navigate(target, { replace: true }), 700)
     } catch (error) {
       setLoading(false)
       setFormError(
@@ -92,6 +96,25 @@ function LoginForm({ onInteraction }) {
 
   return (
     <form onSubmit={handleSubmit} noValidate className="flex flex-col gap-4">
+      <div className="flex rounded-lg border border-cyan-400/20 bg-white/[0.03] p-1">
+        <button
+          type="button"
+          onClick={() => setLoginMode('student')}
+          className={`flex-1 rounded-md py-2 text-sm font-medium transition-all ${loginMode === 'student' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-400/30 shadow-[0_0_12px_-2px_rgba(34,211,238,0.5)]' : 'text-slate-400 hover:text-slate-300'}`}
+          aria-pressed={loginMode === 'student'}
+        >
+          Student
+        </button>
+        <button
+          type="button"
+          onClick={() => setLoginMode('admin')}
+          className={`flex-1 rounded-md py-2 text-sm font-medium transition-all ${loginMode === 'admin' ? 'bg-cyan-500/20 text-cyan-300 border border-cyan-400/30 shadow-[0_0_12px_-2px_rgba(34,211,238,0.5)]' : 'text-slate-400 hover:text-slate-300'}`}
+          aria-pressed={loginMode === 'admin'}
+        >
+          Admin
+        </button>
+      </div>
+
       <div>
         <input
           type="email"
