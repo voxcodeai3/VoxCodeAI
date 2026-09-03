@@ -49,6 +49,12 @@ export default function CodeWorkspace({ isOpen, onClose }) {
   const [exerciseLesson, setExerciseLesson] = useState(null);
   const navigate = useNavigate();
 
+  const handleDismissExercise = useCallback(() => {
+    setExercise(null);
+    setExerciseLesson(null);
+    try { localStorage.removeItem('voxcode:practiceLesson'); } catch {}
+  }, []);
+
   const editorRef = useRef(null);
   const generateInputRef = useRef(null);
   const lastLoadedProjectIdRef = useRef(null);
@@ -293,21 +299,31 @@ export default function CodeWorkspace({ isOpen, onClose }) {
           >
             {sidebarOpen ? <PanelLeftClose className="h-4 w-4" /> : <PanelLeft className="h-4 w-4" />}
           </button>
-          {exerciseLesson && (
-            <button
-              type="button"
-              onClick={() => {
-                if (saveStatus === 'unsaved' && !window.confirm('You have unsaved changes. Leave without saving?')) return;
-                navigate(`/learn/lesson/${exerciseLesson.lessonId}`);
-                setExercise(null);
-                setExerciseLesson(null);
-                try { localStorage.removeItem('voxcode:practiceLesson'); } catch {}
-                onClose();
-              }}
-              className="flex items-center gap-1.5 rounded-lg border border-cyan-400/20 bg-cyan-400/10 px-2.5 py-1 text-xs text-cyan-300 hover:bg-cyan-400/20 transition-colors"
-            >
-              <ArrowLeft className="h-3 w-3" /> Back to Lesson
-            </button>
+          {exercise && (
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={() => {
+                  if (saveStatus === 'unsaved' && !window.confirm('You have unsaved changes. Leave without saving?')) return;
+                  const id = exerciseLesson?.lessonId;
+                  if (id) navigate(`/learn/lesson/${id}`);
+                  else navigate('/learn');
+                  handleDismissExercise();
+                  onClose();
+                }}
+                className="flex items-center gap-1.5 rounded-lg border border-cyan-400/20 bg-cyan-400/10 px-2.5 py-1 text-xs text-cyan-300 hover:bg-cyan-400/20 transition-colors"
+              >
+                <ArrowLeft className="h-3 w-3" /> Back to Lesson
+              </button>
+              <button
+                type="button"
+                onClick={handleDismissExercise}
+                title="Dismiss exercise — keep coding without the exercise banner"
+                className="rounded-lg border border-white/10 bg-white/5 px-2 py-1 text-xs text-white/40 hover:text-white/60 hover:bg-white/10 transition-colors"
+              >
+                Dismiss
+              </button>
+            </div>
           )}
           <ProjectSelector onCreateNew={() => setCreateProjectOpen(true)} />
           <span className="text-[10px] text-white/20 hidden sm:inline">
@@ -410,6 +426,7 @@ export default function CodeWorkspace({ isOpen, onClose }) {
                 });
                 setMobileTab('ai');
               }}
+              onDismiss={handleDismissExercise}
             />
           )}
           <EditorToolbar

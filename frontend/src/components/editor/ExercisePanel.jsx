@@ -1,11 +1,11 @@
 import { useState } from 'react';
-import { Play, MessageCircle, Lightbulb, Eye, CheckCircle, Loader2, AlertCircle } from 'lucide-react';
+import { Play, MessageCircle, Lightbulb, Eye, CheckCircle, Loader2, AlertCircle, X } from 'lucide-react';
 import { useAI } from '../../context/AIContext';
 import { useProject } from '../../context/ProjectContext';
 import learningMemoryApi from '../../services/learningMemoryApi';
 import api from '../../services/api';
 
-export default function ExercisePanel({ exercise, lesson, projectId, activeFile, activeFileContent, onAskAI }) {
+export default function ExercisePanel({ exercise, lesson, projectId, activeFile, activeFileContent, onAskAI, onDismiss }) {
   const { sendMessage } = useAI();
   const [output, setOutput] = useState('');
   const [error, setError] = useState('');
@@ -97,9 +97,16 @@ export default function ExercisePanel({ exercise, lesson, projectId, activeFile,
 
   return (
     <div className="border-b border-white/[0.06] bg-[#080d1a] px-4 py-3">
-      <div className="flex items-center gap-2 mb-2">
-        <span className="text-[11px] tracking-widest text-white/40">EXERCISE</span>
-        {completed && <span className="text-[11px] text-emerald-400 flex items-center gap-1"><CheckCircle className="w-3 h-3" /> Completed</span>}
+      <div className="flex items-center justify-between gap-2 mb-2">
+        <div className="flex items-center gap-2">
+          <span className="text-[11px] tracking-widest text-white/40">EXERCISE</span>
+          {completed && <span className="text-[11px] text-emerald-400 flex items-center gap-1"><CheckCircle className="w-3 h-3" /> Completed</span>}
+        </div>
+        {onDismiss && (
+          <button onClick={onDismiss} title="Dismiss exercise" className="rounded p-1 text-white/30 hover:text-white/60 hover:bg-white/5 transition-colors">
+            <X className="w-3.5 h-3.5" />
+          </button>
+        )}
       </div>
       <div className="text-sm font-medium text-white/80 mb-1">{exercise?.title || lesson?.title}</div>
       <div className="text-xs text-white/40 mb-3">
