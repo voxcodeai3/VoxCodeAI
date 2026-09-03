@@ -254,7 +254,32 @@ async function generateResponse({
       let reply = typeof parsed.reply === "string" ? parsed.reply.trim() : "";
       if (!reply && typeof parsed === "string") reply = parsed.trim();
       if (!reply && typeof parsed.response === "string") reply = parsed.response.trim();
+      if (!reply && typeof parsed.message === "string") reply = parsed.message.trim();
       if (!reply) reply = typeof parsed === "object" ? JSON.stringify(parsed) : String(parsed);
+
+      // Filter placeholder / empty replies that slip through (e.g. "{message}", "{title}", "{}")
+      const placeholder = /^\s*\{\s*(message|title|reply|code)?\s*\}\s*$/i;
+      const isPlaceholder = !reply || placeholder.test(reply) || reply.trim() === "{}" || reply.trim().startsWith("{}") && reply.trim().length < 20;
+      if (isPlaceholder) {
+        // Try to recover: if the raw contains real text after a leading "{}", use that
+        const rawText = String(raw).trim();
+        const afterBraces = rawText.replace(/^\s*\{\s*\}\s*\n*/, "").trim();
+        if (afterBraces && afterBraces.length > 20 && !placeholder.test(afterBraces.slice(0, 20))) {
+          reply = afterBraces;
+          // if it still looks like JSON, try to extract again without the leading {}
+          if (reply.startsWith("{") && reply.includes('"reply"')) {
+            try {
+              const retry = extractJson(reply);
+              if (typeof retry.reply === "string" && retry.reply.trim() && !placeholder.test(retry.reply.trim())) {
+                reply = retry.reply.trim();
+              }
+            } catch {}
+          }
+        } else {
+          // treat as failure so failover can try next model
+          throw Object.assign(new Error("Placeholder reply detected: " + JSON.stringify(reply).slice(0, 80)), { status: 502 });
+        }
+      }
 
       const code =
         typeof parsed.code === "string" && parsed.code.trim() ? parsed.code : null;

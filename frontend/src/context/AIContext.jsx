@@ -84,15 +84,25 @@ const uid = (prefix) =>
  */
 function serverMessagesToFrontend(serverMessages) {
   if (!Array.isArray(serverMessages)) return [];
-  return serverMessages.map((m, i) => ({
-    id: `h-${i}-${m.at || Date.now()}-${m.role}`,
-    type: m.role === 'user' ? 'user' : 'ai',
-    content: m.content,
-    code: m.code || null,
-    timestamp: m.at ? new Date(m.at) : new Date(),
-    avatar: null,
-    source: m.inputMode || undefined,
-  }));
+  const placeholder = /^\s*\{\s*(message|title|reply|code)?\s*\}\s*$/i;
+  return serverMessages
+    .filter((m) => {
+      const c = String(m.content || '').trim();
+      // hide stored placeholder messages like "{message}", "{title}", "{}"
+      if (placeholder.test(c) || c === '{}') return false;
+      // also hide the " {} + example" corrupted message
+      if (c.startsWith('{}') && c.length < 30) return false;
+      return true;
+    })
+    .map((m, i) => ({
+      id: `h-${i}-${m.at || Date.now()}-${m.role}`,
+      type: m.role === 'user' ? 'user' : 'ai',
+      content: m.content,
+      code: m.code || null,
+      timestamp: m.at ? new Date(m.at) : new Date(),
+      avatar: null,
+      source: m.inputMode || undefined,
+    }));
 }
 
 export function AIProvider({ children }) {
@@ -206,10 +216,14 @@ export function AIProvider({ children }) {
 
         const finalMode = applyPreference(data.responseMode, preference);
         setResponseMode(finalMode);
+        const isPlaceholder = !data.message || /^\s*\{\s*(message|title|reply|code)?\s*\}\s*$/i.test(String(data.message).trim()) || String(data.message).trim() === '{}';
+        const safeContent = isPlaceholder
+          ? "I'm here to help! Could you rephrase your question or let me know what you'd like to learn?"
+          : (data.message || '');
         const aiMessage = {
           id: uid('ai'),
           type: 'ai',
-          content: data.message || '',
+          content: safeContent,
           code: data.code || null,
           timestamp: new Date(),
           avatar: null,
