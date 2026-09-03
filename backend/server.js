@@ -22,6 +22,7 @@ const learningFoundationRoutes = require("./routes/learningFoundationRoutes");
 const learningMemoryRoutes = require("./routes/learningMemoryRoutes");
 const adminRoutes = require("./routes/adminRoutes");
 const platformRoutes = require("./routes/platformRoutes");
+const aiLearningStateRoutes = require("./routes/aiLearningStateRoutes");
 
 const app = express();
 
@@ -34,6 +35,7 @@ app.get("/api/test", (req, res) => {
 
 app.use("/api/platform", platformRoutes);
 app.use("/api/auth", authRoutes);
+app.use("/api/learning", aiLearningStateRoutes);
 
 // AI tutor routes (JWT protected)
 app.use("/api/ai", aiRoutes);

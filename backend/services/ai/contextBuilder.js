@@ -52,6 +52,19 @@ async function buildLearningContext(userId, { lessonId, projectId, question }) {
     } catch {}
   }
 
+  // Fallback: topic from memory if no lesson
+  if (!topic && memory?.currentTopic) {
+    try { topic = await Topic.findById(memory.currentTopic).populate("technologies").lean(); } catch {}
+  }
+  // Resolve stage/topic from memory if still missing
+  if (!currentStage && memory?.currentStage) {
+    try { currentStage = await Stage.findById(memory.currentStage).lean(); } catch {}
+  }
+  if (!currentLesson && topic) {
+    // if we have topic but no lesson, try to find first lesson of topic
+    try { currentLesson = await Lesson.findOne({ topic: topic._id, status: "published" }).lean(); } catch {}
+  }
+
   // Fallback: try memory's active path directly
   if (!currentPath && memory?.activeLearningPath) {
     try {
@@ -134,10 +147,11 @@ async function buildLearningContext(userId, { lessonId, projectId, question }) {
     // safe profile
     studentLevel: profile?.experienceLevel || "beginner",
     preferredTeachingStyle: profile?.preferredTeachingStyle || "step_by_step",
-    // current state
+    // current state (AI-First: path, stage, topic, lesson)
     currentTechnology: currentTechnology ? { name: currentTechnology.name || currentTechnology.slug, type: currentTechnology.type } : null,
     learningPath: currentPath ? { title: currentPath.title, technologies: (currentPath.technologies||[]).map(t=>t.name||t.slug||t), category: currentPath.category } : null,
     currentStage: currentStage ? { title: currentStage.title, level: currentStage.level } : null,
+    currentTopic: topic ? { title: topic.title, slug: topic.slug } : null,
     currentLesson: currentLesson ? { title: currentLesson.title, objective: currentLesson.objective, prerequisites: currentLesson.prerequisites, estimatedMinutes: currentLesson.estimatedMinutes, type: currentLesson.type } : null,
     completed: completedTitles,
     weakTopics: relevantWeak,
@@ -164,6 +178,7 @@ function contextToPrompt(context) {
   if (context.currentTechnology) parts.push(`Current Technology: ${context.currentTechnology.name} (${context.currentTechnology.type})`);
   if (context.learningPath) parts.push(`Learning Path: ${context.learningPath.title} (${(context.learningPath.technologies||[]).join(", ")})`);
   if (context.currentStage) parts.push(`Current Stage: ${context.currentStage.title} (${context.currentStage.level})`);
+  if (context.currentTopic) parts.push(`Current Topic: ${context.currentTopic.title}`);
   if (context.currentLesson) parts.push(`Current Lesson: ${context.currentLesson.title} — Objective: ${context.currentLesson.objective || "learn concept"}`);
   if (context.completed?.length) parts.push(`Completed: ${context.completed.join(", ")}`);
   if (context.weakTopics?.length) parts.push(`Previously struggled with: ${context.weakTopics.join(", ")} (adapt explanation)`);
