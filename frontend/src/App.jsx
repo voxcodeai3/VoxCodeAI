@@ -34,6 +34,7 @@ import AssessmentResults from './pages/AssessmentResults'
 import HomePage from './pages/HomePage'
 import Admin from './pages/Admin'
 import InitialAssessment from './pages/InitialAssessment'
+import MiniQuizPage from './pages/MiniQuizPage'
 
 function MaintenanceScreen() {
   return (
@@ -257,6 +258,22 @@ function App() {
             element={
               <ProtectedRoute>
                 <InitialAssessment />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/learn/quiz/:quizId"
+            element={
+              <ProtectedRoute>
+                <MiniQuizPage />
+              </ProtectedRoute>
+            }
+          />
+          <Route
+            path="/learn/quiz"
+            element={
+              <ProtectedRoute>
+                <MiniQuizPage />
               </ProtectedRoute>
             }
           />

@@ -81,7 +81,17 @@ const learningSessionSchema = new mongoose.Schema(
     status: { type: String, enum: ["active", "paused", "completed"], default: "active" },
     teachingState: {
       type: String,
-      enum: ["teaching", "checking_understanding", "awaiting_answer", "reviewing", "ready_for_practice", "completed", "paused"],
+      enum: [
+        "teaching",
+        "checking_understanding",
+        "awaiting_answer",
+        "reviewing",
+        "ready_for_practice",
+        "mini_quiz",
+        "quiz_review",
+        "completed",
+        "paused",
+      ],
       default: "teaching",
     },
     suggestedAction: {

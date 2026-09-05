@@ -8,7 +8,17 @@ const teachingSessionSchema = new mongoose.Schema(
     topic: { type: mongoose.Schema.Types.ObjectId, ref: "Topic", required: true, index: true },
     teachingState: {
       type: String,
-      enum: ["teaching", "checking_understanding", "awaiting_answer", "reviewing", "ready_for_practice", "completed", "paused"],
+      enum: [
+        "teaching",
+        "checking_understanding",
+        "awaiting_answer",
+        "reviewing",
+        "ready_for_practice",
+        "mini_quiz",
+        "quiz_review",
+        "completed",
+        "paused",
+      ],
       default: "teaching",
     },
     status: { type: String, enum: ["active", "paused", "completed"], default: "active", index: true },

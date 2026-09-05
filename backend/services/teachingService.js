@@ -9,7 +9,17 @@ const { generateResponse } = require("./aiService");
 const Conversation = require("../models/Conversation");
 
 // ─── State machine ──────────────────────────────────────────────────
-const TEACHING_STATES = ["teaching", "checking_understanding", "awaiting_answer", "reviewing", "ready_for_practice", "completed", "paused"];
+const TEACHING_STATES = [
+  "teaching",
+  "checking_understanding",
+  "awaiting_answer",
+  "reviewing",
+  "ready_for_practice",
+  "mini_quiz",
+  "quiz_review",
+  "completed",
+  "paused",
+];
 const SUGGESTED_ACTIONS = [
   "continue_explanation",
   "answer_student",
