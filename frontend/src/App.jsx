@@ -33,6 +33,7 @@ import AssessmentPlayer from './pages/AssessmentPlayer'
 import AssessmentResults from './pages/AssessmentResults'
 import HomePage from './pages/HomePage'
 import Admin from './pages/Admin'
+import InitialAssessment from './pages/InitialAssessment'
 
 function MaintenanceScreen() {
   return (
@@ -249,6 +250,14 @@ function App() {
               <ProtectedAdminRoute>
                 <Admin />
               </ProtectedAdminRoute>
+            }
+          />
+          <Route
+            path="/learn/assessment/:pathId"
+            element={
+              <ProtectedRoute>
+                <InitialAssessment />
+              </ProtectedRoute>
             }
           />
           <Route path="*" element={<HomeRedirect />} />

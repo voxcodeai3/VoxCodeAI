@@ -24,6 +24,7 @@ const adminRoutes = require("./routes/adminRoutes");
 const platformRoutes = require("./routes/platformRoutes");
 const aiLearningStateRoutes = require("./routes/aiLearningStateRoutes");
 const roadmapRoutes = require("./routes/roadmapRoutes");
+const initialAssessmentRoutes = require("./routes/initialAssessmentRoutes");
 
 const app = express();
 
@@ -38,6 +39,7 @@ app.use("/api/platform", platformRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/learning", aiLearningStateRoutes);
 app.use("/api/learning", roadmapRoutes);
+app.use("/api/learning/assessment", initialAssessmentRoutes);
 
 // AI tutor routes (JWT protected)
 app.use("/api/ai", aiRoutes);

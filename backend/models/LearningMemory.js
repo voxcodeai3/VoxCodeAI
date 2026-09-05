@@ -97,6 +97,40 @@ const activeGoalSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const learningAssessmentEntrySchema = new mongoose.Schema(
+  {
+    learningPath: { type: mongoose.Schema.Types.ObjectId, ref: "LearningPath", required: true },
+    completed: { type: Boolean, default: false },
+    overallLevel: { type: String, enum: ["beginner", "intermediate", "advanced"], default: "beginner" },
+    technologyLevels: {
+      type: [
+        {
+          technology: { type: String, trim: true },
+          level: { type: String, enum: ["beginner", "intermediate", "advanced"], default: "beginner" },
+          _id: false,
+        },
+      ],
+      default: [],
+    },
+    strengths: { type: [String], default: [] },
+    weaknesses: {
+      type: [
+        {
+          topicId: { type: mongoose.Schema.Types.ObjectId, ref: "Topic" },
+          topicName: { type: String, trim: true },
+          reason: { type: String, default: "" },
+          _id: false,
+        },
+      ],
+      default: [],
+    },
+    recommendedStartingTopic: { type: mongoose.Schema.Types.ObjectId, ref: "Topic", default: null },
+    recommendedStage: { type: mongoose.Schema.Types.ObjectId, ref: "Stage", default: null },
+    assessedAt: { type: Date, default: Date.now },
+  },
+  { _id: false }
+);
+
 const learningMemorySchema = new mongoose.Schema(
   {
     user: { type: mongoose.Schema.Types.ObjectId, ref: "User", required: true, unique: true, index: true },
@@ -140,6 +174,9 @@ const learningMemorySchema = new mongoose.Schema(
     // session
     learningSession: { type: learningSessionSchema, default: null },
     lastLearningSession: { type: learningSessionSchema, default: null },
+
+    // per-path assessments (Step 3) — keeps MERN, Python etc. separate
+    learningAssessments: { type: [learningAssessmentEntrySchema], default: [] },
   },
   { timestamps: true, versionKey: false }
 );
