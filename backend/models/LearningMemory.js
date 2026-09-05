@@ -79,11 +79,32 @@ const assessmentResultSchema = new mongoose.Schema(
 const learningSessionSchema = new mongoose.Schema(
   {
     status: { type: String, enum: ["active", "paused", "completed"], default: "active" },
+    teachingState: {
+      type: String,
+      enum: ["teaching", "checking_understanding", "awaiting_answer", "reviewing", "ready_for_practice", "completed", "paused"],
+      default: "teaching",
+    },
+    suggestedAction: {
+      type: String,
+      enum: [
+        "continue_explanation",
+        "answer_student",
+        "ask_understanding",
+        "ask_knowledge_check",
+        "review_topic",
+        "ready_for_practice",
+        "complete_topic",
+        "move_to_next_topic",
+      ],
+      default: "continue_explanation",
+    },
     startedAt: { type: Date, default: Date.now },
     lastActivity: { type: Date, default: Date.now },
     learningPath: { type: mongoose.Schema.Types.ObjectId, ref: "LearningPath" },
     stage: { type: mongoose.Schema.Types.ObjectId, ref: "Stage" },
     topic: { type: mongoose.Schema.Types.ObjectId, ref: "Topic" },
+    interactionCount: { type: Number, default: 0 },
+    checksPassed: { type: Number, default: 0 },
   },
   { _id: false }
 );
