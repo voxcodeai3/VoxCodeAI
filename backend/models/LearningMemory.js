@@ -6,6 +6,7 @@ const quizResultSchema = new mongoose.Schema(
     lessonId: { type: mongoose.Schema.Types.ObjectId, ref: "Lesson" },
     topicId: { type: mongoose.Schema.Types.ObjectId, ref: "Topic" },
     topic: { type: String },
+    learningPath: { type: mongoose.Schema.Types.ObjectId, ref: "LearningPath", default: null },
     score: { type: Number, default: 0 },
     total: { type: Number, default: 5 },
     passed: { type: Boolean, default: false },
@@ -21,6 +22,7 @@ const exerciseResultSchema = new mongoose.Schema(
     lessonId: { type: mongoose.Schema.Types.ObjectId, ref: "Lesson" },
     topicId: { type: mongoose.Schema.Types.ObjectId, ref: "Topic" },
     topic: { type: String },
+    learningPath: { type: mongoose.Schema.Types.ObjectId, ref: "LearningPath", default: null },
     passed: { type: Boolean, default: false },
     status: { type: String, enum: ["not_started", "in_progress", "completed", "needs_review"], default: "completed" },
     score: { type: Number, default: 0 },
@@ -48,9 +50,69 @@ const weakTopicDetailSchema = new mongoose.Schema(
     topicId: { type: mongoose.Schema.Types.ObjectId, ref: "Topic" },
     topicName: { type: String, trim: true },
     topic: { type: String, trim: true }, // legacy string fallback
+    learningPath: { type: mongoose.Schema.Types.ObjectId, ref: "LearningPath", default: null },
     reason: { type: String, default: "" },
     strength: { type: String, enum: ["weak", "needs_review"], default: "weak" },
+    severity: { type: String, enum: ["low", "medium", "high"], default: "low" },
+    lastScore: { type: Number, default: null },
+    mistakeCount: { type: Number, default: 0 },
+    lastObservedAt: { type: Date, default: Date.now },
     lastReviewedAt: { type: Date, default: null },
+  },
+  { _id: false }
+);
+
+const strongTopicSchema = new mongoose.Schema(
+  {
+    topicId: { type: mongoose.Schema.Types.ObjectId, ref: "Topic" },
+    topicName: { type: String, trim: true },
+    topic: { type: String, trim: true }, // legacy string fallback
+    learningPath: { type: mongoose.Schema.Types.ObjectId, ref: "LearningPath", default: null },
+    confidence: { type: String, enum: ["low", "medium", "high"], default: "low" },
+    successCount: { type: Number, default: 0 },
+    lastObservedAt: { type: Date, default: Date.now },
+  },
+  { _id: false }
+);
+
+const repeatedMistakeSchema = new mongoose.Schema(
+  {
+    concept: { type: String, required: true, trim: true },
+    topicId: { type: mongoose.Schema.Types.ObjectId, ref: "Topic", default: null },
+    topicName: { type: String, trim: true, default: "" },
+    learningPath: { type: mongoose.Schema.Types.ObjectId, ref: "LearningPath", default: null },
+    mistakeCount: { type: Number, default: 1 },
+    lastObservedAt: { type: Date, default: Date.now },
+  },
+  { _id: false }
+);
+
+const learningEventSchema = new mongoose.Schema(
+  {
+    type: {
+      type: String,
+      enum: [
+        "assessment_completed",
+        "topic_started",
+        "topic_completed",
+        "check_answered",
+        "quiz_completed",
+        "exercise_attempted",
+        "exercise_completed",
+        "repeated_mistake",
+        "marked_for_review",
+        "topic_reviewed",
+        "session_started",
+        "session_paused",
+        "session_resumed",
+      ],
+      required: true,
+    },
+    learningPath: { type: mongoose.Schema.Types.ObjectId, ref: "LearningPath", default: null },
+    stage: { type: mongoose.Schema.Types.ObjectId, ref: "Stage", default: null },
+    topic: { type: mongoose.Schema.Types.ObjectId, ref: "Topic", default: null },
+    detail: { type: String, default: "" },
+    createdAt: { type: Date, default: Date.now },
   },
   { _id: false }
 );
@@ -186,6 +248,12 @@ const learningMemorySchema = new mongoose.Schema(
     currentExercise: {
       exerciseId: { type: String, default: null },
       lessonId: { type: mongoose.Schema.Types.ObjectId, ref: "Lesson", default: null },
+      topicId: { type: mongoose.Schema.Types.ObjectId, ref: "Topic", default: null },
+      stageId: { type: mongoose.Schema.Types.ObjectId, ref: "Stage", default: null },
+      learningPathId: { type: mongoose.Schema.Types.ObjectId, ref: "LearningPath", default: null },
+      projectId: { type: mongoose.Schema.Types.ObjectId, ref: "Project", default: null },
+      filePath: { type: String, default: null },
+      status: { type: String, enum: ["not_started", "in_progress", "completed", "needs_review"], default: "in_progress" },
     },
     currentProject: { type: mongoose.Schema.Types.ObjectId, ref: "Project", default: null },
 
@@ -201,6 +269,10 @@ const learningMemorySchema = new mongoose.Schema(
     // structured weaknesses — alongside legacy weakTopics
     weakTopicsDetailed: { type: [weakTopicDetailSchema], default: [] },
     topicsNeedingReview: { type: [{ type: mongoose.Schema.Types.ObjectId, ref: "Topic" }], default: [] },
+    // lightweight strengths, repeated mistakes, and meaningful learning events (Step 7)
+    strongTopics: { type: [strongTopicSchema], default: [] },
+    repeatedMistakes: { type: [repeatedMistakeSchema], default: [] },
+    learningEvents: { type: [learningEventSchema], default: [] },
 
     // session
     learningSession: { type: learningSessionSchema, default: null },

@@ -19,11 +19,12 @@ import VersionHistoryPanel from './VersionHistoryPanel';
 import ProjectSelector from './ProjectSelector';
 import CreateProjectModal from './CreateProjectModal';
 import ExercisePanel from './ExercisePanel';
+import { readPracticeContext, clearPracticeContext } from '../../services/practiceApi';
 
 export default function CodeWorkspace({ isOpen, onClose }) {
   const {
     files, activeFile, activeFileData, fileList,
-    updateFileContent, createFile, renameActiveFile,
+    updateFileContent, createFile, renameActiveFile, openFile,
     loadProjectFiles, resetWorkspace,
   } = useCodingWorkspace();
   const { sendMessage, isThinking } = useAI();
@@ -52,6 +53,8 @@ export default function CodeWorkspace({ isOpen, onClose }) {
   const handleDismissExercise = useCallback(() => {
     setExercise(null);
     setExerciseLesson(null);
+    starterEnsuredRef.current = null;
+    clearPracticeContext();
     try { localStorage.removeItem('voxcode:practiceLesson'); } catch {}
   }, []);
 
@@ -125,10 +128,43 @@ export default function CodeWorkspace({ isOpen, onClose }) {
     return () => { if (syncTimerRef.current) clearTimeout(syncTimerRef.current); };
   }, []);
 
-  // ─── Exercise context: load when workspace opens from lesson ───
+  // ─── Exercise context: load when workspace opens ───
+  // Supports new AI-first practice context (voxcode:practiceExercise) and
+  // legacy lesson context (voxcode:practiceLesson). Never clears on close —
+  // context persists so AI Teacher ↔ Code Workspace navigation keeps state.
+  const starterEnsuredRef = useRef(null);
   useEffect(() => {
     if (!isOpen) return;
     try {
+      const practice = readPracticeContext();
+      if (practice && (practice.exerciseId || practice.topicId)) {
+        setExerciseLesson({
+          lessonId: practice.lessonId,
+          title: practice.title,
+          objective: practice.instructions,
+        });
+        setExercise({
+          exerciseId: practice.exerciseId,
+          pathId: practice.pathId,
+          stageId: practice.stageId,
+          topicId: practice.topicId,
+          lessonId: practice.lessonId,
+          title: practice.title,
+          instructions: practice.instructions,
+          difficulty: practice.difficulty,
+          technology: practice.technology,
+          language: practice.language,
+          fileName: practice.fileName,
+          starterCode: practice.starterCode,
+          hints: practice.hints,
+          expectedBehavior: practice.expectedBehavior,
+          topicTitle: practice.topicTitle,
+          stageTitle: practice.stageTitle,
+          pathTitle: practice.pathTitle,
+          requirements: [],
+        });
+        return;
+      }
       const raw = localStorage.getItem('voxcode:practiceLesson');
       if (raw) {
         const data = JSON.parse(raw);
@@ -146,6 +182,24 @@ export default function CodeWorkspace({ isOpen, onClose }) {
       setExercise(null);
     }
   }, [isOpen]);
+
+  // ─── Starter file: create only when missing, never overwrite ───
+  useEffect(() => {
+    if (!isOpen || !exercise?.fileName || !exercise?.starterCode) return;
+    const key = `${exercise.exerciseId || exercise.title}:${exercise.fileName}`;
+    if (starterEnsuredRef.current === key) return;
+    // Wait until workspace files are loaded (project open). If no project,
+    // ExercisePanel shows the "select a project" message — do nothing here.
+    if (!currentProject || !files) return;
+    if (files[exercise.fileName]) {
+      starterEnsuredRef.current = key;
+      openFile(exercise.fileName);
+      return;
+    }
+    // Only create when missing — never silently overwrite existing files.
+    const created = createFile(exercise.fileName, exercise.starterCode);
+    if (created) starterEnsuredRef.current = key;
+  }, [isOpen, exercise?.exerciseId, exercise?.fileName, currentProject?._id, files, createFile, openFile]);
 
   // ─── AI actions (project-aware + code context) ───
   const handleAction = useCallback((actionId) => {

@@ -27,6 +27,7 @@ const SUGGESTED_ACTIONS = [
   "ask_knowledge_check",
   "review_topic",
   "ready_for_practice",
+  "practice_in_code",
   "complete_topic",
   "move_to_next_topic",
 ];
@@ -95,7 +96,8 @@ Respond STRICTLY as minified JSON on a single line, no markdown fences. Example:
 
 - state must be one of: teaching, checking_understanding, awaiting_answer, reviewing, ready_for_practice, completed
 - evaluation is null unless you just evaluated an answer, then {"result":"correct|partially_correct|incorrect|unclear","feedback":"short feedback"}
-- suggestedAction must be one of: continue_explanation, answer_student, ask_understanding, ask_knowledge_check, review_topic, ready_for_practice, complete_topic, move_to_next_topic
+- suggestedAction must be one of: continue_explanation, answer_student, ask_understanding, ask_knowledge_check, review_topic, ready_for_practice, practice_in_code, complete_topic, move_to_next_topic
+- when the student is ready for coding practice, use suggestedAction "practice_in_code" so the UI can show "Practice in Code"
 - topicStatus must be one of: in_progress, needs_review, understood
 `;
 }
@@ -188,6 +190,12 @@ async function getOrCreateSession(userId, learningPathId, topicId) {
   mem.lastActivity = new Date();
   mem.lastOpenedAt = new Date();
   await mem.save();
+  // Meaningful events only (Step 7) — never per-message.
+  try {
+    const { recordEvent } = require("./memoryUpdateService");
+    await recordEvent(userId, { type: "session_started", learningPath: learningPathId, stage: stage?._id, topic: topic._id, detail: topic.title });
+    await recordEvent(userId, { type: "topic_started", learningPath: learningPathId, stage: stage?._id, topic: topic._id, detail: topic.title });
+  } catch {}
   return session;
 }
 
@@ -357,17 +365,26 @@ async function processMessage(userId, sessionId, studentMessage) {
       checksPassed: session.checksPassed,
     };
     mem2.lastActivity = new Date();
-    // Update weak topics if evaluation says needs_review
+    // Centralized weak-topic update (Step 7): incorrect/partial evaluation is a struggle signal.
+    // Save first so recordWeakSignal works on fresh state, then reload.
+    await mem2.save();
     if (evaluation && (evaluation.result === "incorrect" || evaluation.result === "partially_correct") && topic) {
-      const reason = evaluation.feedback || "Struggled with " + topic.title;
-      const exists = (mem2.weakTopicsDetailed || []).find((w) => w.topicId?.toString() === topic._id.toString());
-      if (!exists) {
-        mem2.weakTopicsDetailed.push({ topicId: topic._id, topicName: topic.title, topic: topic.title, reason: String(reason).slice(0, 200), strength: "weak", lastReviewedAt: null });
-        if (mem2.weakTopicsDetailed.length > 20) mem2.weakTopicsDetailed = mem2.weakTopicsDetailed.slice(-20);
-      }
-      if (!mem2.weakTopics.includes(topic.title)) mem2.weakTopics = [...mem2.weakTopics, topic.title].slice(-20);
-      if (!mem2.topicsNeedingReview.find((id) => id.toString() === topic._id.toString())) {
-        mem2.topicsNeedingReview.push(topic._id);
+      const { recordWeakSignal } = require("./memoryUpdateService");
+      await recordWeakSignal(userId, {
+        learningPath: session.learningPath,
+        topicId: topic._id,
+        topicName: topic.title,
+        reason: evaluation.feedback || "Struggled with " + topic.title,
+      }).catch(() => {});
+      const refreshed = await LearningMemory.findOne({ user: userId });
+      if (refreshed) {
+        refreshed.learningSession = mem2.learningSession;
+        refreshed.lastActivity = new Date();
+        await refreshed.save();
+        // keep local ref in sync for the completion check below
+        mem2.weakTopicsDetailed = refreshed.weakTopicsDetailed;
+        mem2.weakTopics = refreshed.weakTopics;
+        mem2.topicsNeedingReview = refreshed.topicsNeedingReview;
       }
     }
     // Simple completion condition: teaching + checking + at least 1 correct check and interaction >=3
@@ -448,6 +465,10 @@ async function completeTopic(userId, sessionId) {
     mem.lastActivity = new Date();
     await mem.save();
   }
+  try {
+    const { recordEvent } = require("./memoryUpdateService");
+    await recordEvent(userId, { type: "topic_completed", learningPath: session.learningPath, stage: session.stage, topic: session.topic, detail: "via teaching session" });
+  } catch {}
 
   // Determine next topic via roadmap
   const next = await getNextTopic(session.learningPath, session.topic);

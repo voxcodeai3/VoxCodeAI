@@ -75,13 +75,74 @@ async function buildLearningContext(userId, { lessonId, projectId, question }) {
     }
   }
 
-  // Weak topics — relevant only if question mentions them
-  const allWeak = memory?.weakTopics || [];
+  // Weak topics — path-filtered (Step 7: memory never leaks across paths), relevant only if question mentions them
+  const activePathId = currentPath?._id?.toString() || memory?.activeLearningPath?.toString() || null;
+  const detailedWeak = (memory?.weakTopicsDetailed || []).filter(w => {
+    if (!w) return false;
+    if (activePathId && w.learningPath && w.learningPath.toString() !== activePathId) return false;
+    return true;
+  });
+  const weakNames = detailedWeak.map(w => w.topicName || w.topic).filter(Boolean);
+  const legacyWeak = (memory?.weakTopics || []).filter(w => !weakNames.map(n => n.toLowerCase()).includes(String(w).toLowerCase()));
+  const allWeak = [...weakNames, ...legacyWeak];
   const qLower = (question || "").toLowerCase();
   const relevantWeak = allWeak.filter(w => {
     if (!qLower) return false;
-    return qLower.includes(w.toLowerCase()) || (currentLesson?.title || "").toLowerCase().includes(w.toLowerCase());
+    return qLower.includes(w.toLowerCase()) || (currentLesson?.title || "").toLowerCase().includes(w.toLowerCase()) || (topic?.title || "").toLowerCase().includes(w.toLowerCase());
   }).slice(0, 3);
+  // Always surface the top path-relevant weakness even without a keyword match (compact: max 1 extra)
+  const topWeak = detailedWeak
+    .slice()
+    .sort((a, b) => ({ high: 0, medium: 1, low: 2 }[a.severity] - ({ high: 0, medium: 1, low: 2 }[b.severity] || 2)))
+    .slice(0, 2)
+    .map(w => ({ name: w.topicName || w.topic, severity: w.severity || "low", reason: (w.reason || "").slice(0, 120) }))
+    .filter(w => w.name && !relevantWeak.map(r => r.toLowerCase()).includes(w.name.toLowerCase()))
+    .slice(0, 1);
+  const weakWithSeverity = relevantWeak.map(name => {
+    const d = detailedWeak.find(w => (w.topicName || w.topic || "").toLowerCase() === String(name).toLowerCase());
+    return d ? { name, severity: d.severity || "low", reason: (d.reason || "").slice(0, 120) } : { name, severity: "low" };
+  });
+  const weakForPrompt = [...weakWithSeverity, ...topWeak].slice(0, 3);
+
+  // Strong topics — path-filtered, top by success evidence
+  const strongForPath = (memory?.strongTopics || [])
+    .filter(s => !activePathId || !s.learningPath || s.learningPath.toString() === activePathId)
+    .slice()
+    .sort((a, b) => (b.successCount || 0) - (a.successCount || 0))
+    .slice(0, 3)
+    .map(s => s.topicName || s.topic)
+    .filter(Boolean);
+
+  // Assessment result for the ACTIVE path only (assessments are per-path)
+  const activeAssessment = (memory?.learningAssessments || []).find(a =>
+    activePathId && a.learningPath && a.learningPath.toString() === activePathId && a.completed
+  ) || null;
+
+  // Topics flagged for review (resolve titles, cap 3, path-relevant first)
+  let reviewTitles = [];
+  try {
+    const reviewIds = (memory?.topicsNeedingReview || []).slice(0, 5);
+    if (reviewIds.length) {
+      const docs = await Topic.find({ _id: { $in: reviewIds } }).select("title stage").lean().catch(() => []);
+      reviewTitles = docs.map(d => d.title).slice(0, 3);
+    }
+  } catch {}
+
+  // Recent quiz / exercise evidence for the CURRENT topic only
+  const curTopicId = topic?._id?.toString() || memory?.currentTopic?.toString() || null;
+  let recentQuiz = null;
+  let recentExercise = null;
+  if (curTopicId) {
+    const quizzes = (memory?.quizResults || []).filter(q => q.topicId && q.topicId.toString() === curTopicId);
+    const lastQ = quizzes[quizzes.length - 1];
+    if (lastQ) recentQuiz = { score: lastQ.score, total: lastQ.total, passed: lastQ.passed };
+    const exs = (memory?.exerciseResults || []).filter(e => e.topicId && e.topicId.toString() === curTopicId);
+    const lastE = exs[exs.length - 1];
+    if (lastE) recentExercise = { passed: lastE.passed, status: lastE.status, attempts: lastE.attempts };
+  }
+
+  // Current teaching session state (if any)
+  const sessionState = memory?.learningSession?.teachingState || null;
 
   // Completed — last 10 only to keep compact
   const completedLessons = (memory?.completedLessons || []).slice(-10);
@@ -143,6 +204,16 @@ async function buildLearningContext(userId, { lessonId, projectId, question }) {
     }
   } catch {}
 
+  // Adaptation guidance: HOW to teach, derived from evidence (provider-independent text)
+  let adaptation = null;
+  const struggling = weakForPrompt.some(w => w.severity === "high") || (recentQuiz && recentQuiz.total && (recentQuiz.score / recentQuiz.total) * 100 < 60);
+  const strongHere = strongForPath.length > 0 && !struggling;
+  if (struggling) {
+    adaptation = "Student is struggling here — use simpler language, smaller examples, more hints, and extra understanding checks. Do not skip ahead.";
+  } else if (strongHere) {
+    adaptation = "Student shows strength in related areas — slightly more challenging examples, less repetition, deeper questions are OK.";
+  }
+
   const context = {
     // safe profile
     studentLevel: profile?.experienceLevel || "beginner",
@@ -155,6 +226,14 @@ async function buildLearningContext(userId, { lessonId, projectId, question }) {
     currentLesson: currentLesson ? { title: currentLesson.title, objective: currentLesson.objective, prerequisites: currentLesson.prerequisites, estimatedMinutes: currentLesson.estimatedMinutes, type: currentLesson.type } : null,
     completed: completedTitles,
     weakTopics: relevantWeak,
+    weakTopicsDetailed: weakForPrompt,
+    strongTopics: strongForPath,
+    topicsNeedingReview: reviewTitles,
+    assessment: activeAssessment ? { level: activeAssessment.overallLevel, strengths: (activeAssessment.strengths || []).slice(0, 3) } : null,
+    recentQuiz,
+    recentExercise,
+    sessionState,
+    adaptation,
     progressPercent,
     currentProject,
     recentConversation,
@@ -181,7 +260,15 @@ function contextToPrompt(context) {
   if (context.currentTopic) parts.push(`Current Topic: ${context.currentTopic.title}`);
   if (context.currentLesson) parts.push(`Current Lesson: ${context.currentLesson.title} — Objective: ${context.currentLesson.objective || "learn concept"}`);
   if (context.completed?.length) parts.push(`Completed: ${context.completed.join(", ")}`);
-  if (context.weakTopics?.length) parts.push(`Previously struggled with: ${context.weakTopics.join(", ")} (adapt explanation)`);
+  if (context.weakTopicsDetailed?.length) parts.push(`Struggled with: ${context.weakTopicsDetailed.map(w => `${w.name} (${w.severity}${w.reason ? `: ${w.reason}` : ""})`).join("; ")}`);
+  else if (context.weakTopics?.length) parts.push(`Previously struggled with: ${context.weakTopics.join(", ")} (adapt explanation)`);
+  if (context.strongTopics?.length) parts.push(`Strong in: ${context.strongTopics.join(", ")}`);
+  if (context.topicsNeedingReview?.length) parts.push(`Needs review: ${context.topicsNeedingReview.join(", ")}`);
+  if (context.assessment) parts.push(`Initial assessment: ${context.assessment.level}${context.assessment.strengths?.length ? ` (comfortable with: ${context.assessment.strengths.join(", ")})` : ""} — starting estimate only, still follow the roadmap`);
+  if (context.recentQuiz) parts.push(`Recent quiz on this topic: ${context.recentQuiz.score}/${context.recentQuiz.total}${context.recentQuiz.passed ? " (passed)" : ""}`);
+  if (context.recentExercise) parts.push(`Recent exercise: ${context.recentExercise.status}${context.recentExercise.passed ? " (passed)" : ""}`);
+  if (context.sessionState) parts.push(`Teaching session state: ${context.sessionState}`);
+  if (context.adaptation) parts.push(`Teaching adaptation: ${context.adaptation}`);
   if (context.currentProject) parts.push(`Current Project: ${context.currentProject.name} (${context.currentProject.fileCount} files)`);
   if (context.conversationSummary) parts.push(`Conversation summary: ${context.conversationSummary}`);
   return parts.join("\n");

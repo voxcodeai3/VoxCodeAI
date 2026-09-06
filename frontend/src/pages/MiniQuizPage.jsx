@@ -198,6 +198,26 @@ export default function MiniQuizPage() {
             </div>
           )}
           <div className="flex gap-2 mt-5">
+            {(r.passed || r.percentage >= 60) && (
+              <button
+                onClick={async () => {
+                  try {
+                    const { startPractice, storePracticeContext, getExercise } = await import('../services/practiceApi');
+                    const pathId = quiz?.learningPath;
+                    const topicId = quiz?.topic;
+                    if (pathId && topicId) {
+                      const started = await startPractice({ pathId, topicId }).catch(() => null);
+                      const ex = started?.exercise || await getExercise({ pathId, topicId }).catch(() => null);
+                      if (ex) storePracticeContext(ex);
+                    }
+                  } catch {}
+                  navigate('/voxcode?openCode=1');
+                }}
+                className="flex-1 rounded-lg bg-violet-500/15 border border-violet-400/20 px-4 py-2.5 text-sm text-violet-200 hover:bg-violet-500/20 flex items-center justify-center gap-2"
+              >
+                <BookOpen className="h-4 w-4" /> Practice in Code
+              </button>
+            )}
             <button onClick={() => navigate('/learn')} className="flex-1 rounded-lg bg-cyan-500/15 border border-cyan-400/20 px-4 py-2.5 text-sm text-cyan-200 hover:bg-cyan-500/20 flex items-center justify-center gap-2">Continue Learning <ArrowRight className="h-4 w-4" /></button>
             {needsReview && <button onClick={() => navigate(-1)} className="px-4 py-2.5 rounded-lg bg-white/5 border border-white/10 text-white/70 text-sm flex items-center gap-2"><BookOpen className="h-4 w-4" /> Review Topic</button>}
             {!isPass && <button onClick={() => window.location.reload()} className="px-4 py-2.5 rounded-lg bg-white/5 border border-white/10 text-white/70 text-sm flex items-center gap-2"><RotateCcw className="h-4 w-4" /> Retry</button>}

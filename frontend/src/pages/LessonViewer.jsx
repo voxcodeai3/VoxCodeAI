@@ -162,11 +162,25 @@ export default function LessonViewer() {
   };
 
   const handlePracticeInCode = async () => {
-    // Save exercise attempt and open code workspace with lesson context
+    // Save exercise attempt and open code workspace with lesson context.
+    // Also try the AI-first practice API so the Code Workspace gets a rich
+    // exercise (instructions, starter code, topic/path linkage). Falls back
+    // to the legacy lesson context if the practice API is unavailable.
     try {
       await learningMemoryApi.saveExercise({ lessonId: currentLesson?._id || lessonId, topic: currentLesson?.title, passed: false });
     } catch {}
-    // Persist lesson context for Code workspace to pick up
+    try {
+      const { getExercise, startPractice, storePracticeContext } = await import('../services/practiceApi');
+      const state = await api.get('/learning/state').then((r) => r.data).catch(() => null);
+      const topicId = state?.currentTopic?._id || state?.currentTopic || null;
+      const pathId = state?.activeLearningPath?._id || state?.activeLearningPath || state?.activeLearningGoal?.learningPath?._id || state?.activeLearningGoal?.learningPath || null;
+      if (topicId && pathId) {
+        const started = await startPractice({ pathId, topicId, projectId: currentProject?._id }).catch(() => null);
+        const ex = started?.exercise || await getExercise({ pathId, topicId }).catch(() => null);
+        if (ex) storePracticeContext(ex, { projectId: currentProject?._id });
+      }
+    } catch {}
+    // Persist lesson context for Code workspace to pick up (legacy fallback)
     try {
       localStorage.setItem('voxcode:practiceLesson', JSON.stringify({
         lessonId: currentLesson?._id || lessonId,
@@ -175,7 +189,7 @@ export default function LessonViewer() {
         projectId: currentProject?._id,
       }));
     } catch {}
-    navigate('/voxcode');
+    navigate('/voxcode?openCode=1');
   };
 
   if (loading) {

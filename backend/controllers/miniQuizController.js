@@ -245,34 +245,29 @@ exports.completeQuiz = async (req, res) => {
     quiz.completedAt = new Date();
     await quiz.save();
 
-    // Update LearningMemory
+    // Update LearningMemory (quiz result record stays here; weak/strong via centralized service)
     const mem = await LearningMemory.findOrCreate(userId);
     // quizResults path-specific
     mem.quizResults.push({
       quizId: quiz._id,
       topicId: quiz.topic,
       topic: quiz.topic ? (await Topic.findById(quiz.topic).lean())?.title || "Topic" : "Topic",
+      learningPath: quiz.learningPath,
       score,
       total,
       passed,
       attempts: 1,
     });
     if (mem.quizResults.length > 50) mem.quizResults = mem.quizResults.slice(-50);
+    await mem.save();
 
-    // Weak topics tracking
+    // Centralized weak/strong updates (Step 7) — single source of memory logic.
+    const { applyQuizOutcome } = require("../services/memoryUpdateService");
+    await applyQuizOutcome(userId, quiz, { percentage, passed }).catch(() => {});
+    // Reload fresh (service saved its own copy) for session-state transitions below.
+    const mem2 = await LearningMemory.findOne({ user: userId });
+
     if (needsReview || review) {
-      const topicDoc = await Topic.findById(quiz.topic).lean();
-      const topicName = topicDoc?.title || "Topic";
-      const reason = `Quiz ${percentage}% on ${topicName}`;
-      const exists = (mem.weakTopicsDetailed || []).find((w) => w.topicId?.toString() === quiz.topic.toString());
-      if (!exists) {
-        mem.weakTopicsDetailed.push({ topicId: quiz.topic, topicName, topic: topicName, reason, strength: "weak", lastReviewedAt: null });
-      } else {
-        exists.reason = reason;
-        exists.strength = "needs_review";
-      }
-      if (!mem.weakTopics.includes(topicName)) mem.weakTopics = [...mem.weakTopics, topicName].slice(-20);
-      if (!mem.topicsNeedingReview.find((id) => id.toString() === quiz.topic.toString())) mem.topicsNeedingReview.push(quiz.topic);
       // teaching session -> quiz_review
       if (quiz.teachingSession) {
         const sess = await TeachingSession.findById(quiz.teachingSession);
@@ -282,20 +277,11 @@ exports.completeQuiz = async (req, res) => {
           await sess.save();
         }
       }
-      if (mem.learningSession) {
-        mem.learningSession.teachingState = "quiz_review";
-        mem.learningSession.suggestedAction = "review_topic";
+      if (mem2?.learningSession) {
+        mem2.learningSession.teachingState = "quiz_review";
+        mem2.learningSession.suggestedAction = "review_topic";
       }
     } else if (passed) {
-      // strong -> reduce review need, update weakTopics if previously weak and now passed
-      const idx = (mem.weakTopicsDetailed || []).findIndex((w) => w.topicId?.toString() === quiz.topic.toString());
-      if (idx >= 0) {
-        // keep but mark as reviewed
-        mem.weakTopicsDetailed[idx].lastReviewedAt = new Date();
-        mem.weakTopicsDetailed[idx].strength = "weak"; // keep but could be updated
-      }
-      // remove from topicsNeedingReview if passed strongly
-      mem.topicsNeedingReview = (mem.topicsNeedingReview || []).filter((id) => id.toString() !== quiz.topic.toString());
       // If teaching session, mark ready_for_practice
       if (quiz.teachingSession) {
         const sess = await TeachingSession.findById(quiz.teachingSession);
@@ -306,20 +292,21 @@ exports.completeQuiz = async (req, res) => {
           await sess.save();
         }
       }
-      if (mem.learningSession) {
-        mem.learningSession.teachingState = "ready_for_practice";
-        mem.learningSession.suggestedAction = "ready_for_practice";
-        mem.learningSession.checksPassed = (mem.learningSession.checksPassed || 0) + 1;
+      if (mem2?.learningSession) {
+        mem2.learningSession.teachingState = "ready_for_practice";
+        mem2.learningSession.suggestedAction = "ready_for_practice";
+        mem2.learningSession.checksPassed = (mem2.learningSession.checksPassed || 0) + 1;
       }
-      // Consider topic completed if passed and not already
-      if (!mem.completedTopics.find((id) => id.toString() === quiz.topic.toString()) && percentage >= 80) {
-        // only add if strong, but keep conservative — add to completedTopics
-        mem.completedTopics.push(quiz.topic);
+      // Consider topic completed if passed strongly and not already
+      if (mem2 && !mem2.completedTopics.find((id) => id.toString() === quiz.topic.toString()) && percentage >= 80) {
+        mem2.completedTopics.push(quiz.topic);
       }
     }
 
-    mem.lastActivity = new Date();
-    await mem.save();
+    if (mem2) {
+      mem2.lastActivity = new Date();
+      await mem2.save();
+    }
 
     // Also update teaching session if linked
     let nextTopicInfo = null;

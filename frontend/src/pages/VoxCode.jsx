@@ -102,6 +102,12 @@ export default function VoxCode() {
       triggerQuickAction(action);
       navigate('/voxcode', { replace: true });
     }
+    // Open the Code Workspace directly (e.g. after "Practice in Code").
+    // Practice context is already in localStorage; CodeWorkspace picks it up.
+    if (searchParams.get('openCode') === '1') {
+      setIsWorkspaceOpen(true);
+      navigate('/voxcode', { replace: true });
+    }
   }, [searchParams, triggerQuickAction, navigate]);
 
   const isInInterview = interviewState && interviewState !== 'idle';

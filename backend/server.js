@@ -27,6 +27,8 @@ const roadmapRoutes = require("./routes/roadmapRoutes");
 const initialAssessmentRoutes = require("./routes/initialAssessmentRoutes");
 const teachingRoutes = require("./routes/teachingRoutes");
 const miniQuizRoutes = require("./routes/miniQuizRoutes");
+const practiceRoutes = require("./routes/practiceRoutes");
+const progressRoutes = require("./routes/progressRoutes");
 
 const app = express();
 
@@ -44,6 +46,8 @@ app.use("/api/learning", roadmapRoutes);
 app.use("/api/learning/assessment", initialAssessmentRoutes);
 app.use("/api/learning/teaching", teachingRoutes);
 app.use("/api/learning/quiz", miniQuizRoutes);
+app.use("/api/learning/practice", practiceRoutes);
+app.use("/api/learning/progress", progressRoutes);
 
 // AI tutor routes (JWT protected)
 app.use("/api/ai", aiRoutes);

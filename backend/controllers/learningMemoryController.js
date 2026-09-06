@@ -121,10 +121,19 @@ exports.saveExercise = async (req, res) => {
     const { lessonId, exerciseId, passed, score, topic } = req.body;
     const mem = await LearningMemory.findOrCreate(userId);
     mem.exerciseResults.push({ exerciseId: exerciseId || `ex-${Date.now()}`, lessonId, topic, passed: !!passed, score: score || 0 });
-    if (!passed && topic && !mem.weakTopics.includes(topic)) mem.weakTopics = [...mem.weakTopics, topic].slice(-20);
     mem.lastActivity = new Date();
     await mem.save();
-    res.json(mem);
+    // Centralized weak/strong tracking (Step 7)
+    try {
+      const { recordWeakSignal, recordSuccess } = require("../services/memoryUpdateService");
+      if (!passed && topic) {
+        await recordWeakSignal(userId, { topicName: topic, reason: "Exercise not passed" });
+      } else if (passed && topic) {
+        await recordSuccess(userId, { topicName: topic });
+      }
+    } catch {}
+    const updated = await LearningMemory.findOne({ user: userId });
+    res.json(updated || mem);
   } catch (err) {
     res.status(500).json({ message: "Failed to save exercise" });
   }
@@ -136,10 +145,19 @@ exports.saveQuiz = async (req, res) => {
     const { lessonId, topic, score, passed } = req.body;
     const mem = await LearningMemory.findOrCreate(userId);
     mem.quizResults.push({ lessonId, topic, score: score || 0, passed: !!passed, attempts: 1 });
-    if (!passed && topic && !mem.weakTopics.includes(topic)) mem.weakTopics = [...mem.weakTopics, topic].slice(-20);
     mem.lastActivity = new Date();
     await mem.save();
-    res.json(mem);
+    // Centralized weak/strong tracking (Step 7)
+    try {
+      const { recordWeakSignal, recordSuccess } = require("../services/memoryUpdateService");
+      if (!passed && topic) {
+        await recordWeakSignal(userId, { topicName: topic, reason: "Quiz not passed" });
+      } else if (passed && topic) {
+        await recordSuccess(userId, { topicName: topic });
+      }
+    } catch {}
+    const updated = await LearningMemory.findOne({ user: userId });
+    res.json(updated || mem);
   } catch (err) {
     res.status(500).json({ message: "Failed to save quiz" });
   }

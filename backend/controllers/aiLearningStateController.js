@@ -261,12 +261,18 @@ exports.patchState = async (req, res) => {
         const topicId = w.topicId && isValidId(w.topicId) ? w.topicId : null;
         const topicName = (w.topicName || w.topic || "").trim().slice(0, 80);
         if (!topicId && !topicName) continue;
+        const learningPath = w.learningPath && isValidId(w.learningPath) ? w.learningPath : null;
         cleaned.push({
           topicId,
           topicName,
           topic: topicName,
+          learningPath,
           reason: String(w.reason || "").slice(0, 200),
           strength: ["weak", "needs_review"].includes(w.strength) ? w.strength : "weak",
+          severity: ["low", "medium", "high"].includes(w.severity) ? w.severity : "low",
+          lastScore: typeof w.lastScore === "number" ? w.lastScore : null,
+          mistakeCount: typeof w.mistakeCount === "number" && w.mistakeCount >= 0 ? Math.floor(w.mistakeCount) : 0,
+          lastObservedAt: w.lastObservedAt ? new Date(w.lastObservedAt) : new Date(),
           lastReviewedAt: w.lastReviewedAt ? new Date(w.lastReviewedAt) : null,
         });
       }

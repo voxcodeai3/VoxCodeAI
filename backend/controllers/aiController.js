@@ -273,25 +273,36 @@ async function chat(req, res) {
       const mem = await LearningMemory.findOne({ user: userId });
       if (mem) {
         mem.lastActivity = new Date();
+        await mem.save();
         // Track weak topics if question suggests struggle and current lesson exists
+        // (centralized service, Step 7 — path-scoped, deduped, severity-tracked)
         const struggleHints = ["don't understand", "confused", "not working", "error", "failed", "struggling"];
         const qLower = message.toLowerCase();
         const isStruggle = struggleHints.some(h => qLower.includes(h));
         if (isStruggle && learningContextObj?.currentLesson?.title) {
-          const topic = learningContextObj.currentLesson.title;
-          if (!mem.weakTopics.includes(topic)) {
-            mem.weakTopics = [...mem.weakTopics, topic].slice(-20);
-          }
+          try {
+            const { recordWeakSignal } = require("../services/memoryUpdateService");
+            await recordWeakSignal(userId, {
+              learningPath: learningContextObj?.learningPath?._id || learningContextObj?.learningPath?.id || mem.activeLearningPath,
+              topicName: learningContextObj.currentLesson.title,
+              reason: "Struggle detected in AI chat",
+            });
+          } catch {}
         }
-        // Conversation summarization for long threads
+        // Conversation summarization for long threads (fresh copy — service may have saved)
         if (conversation.messages.length > 20 && conversation.messages.length % 10 === 0) {
           try {
             const summary = buildConversationSummary(conversation.messages);
-            if (summary) mem.conversationSummary = summary.slice(0, 500);
+            if (summary) {
+              const fresh = await LearningMemory.findOne({ user: userId });
+              if (fresh) {
+                fresh.conversationSummary = summary.slice(0, 500);
+                await fresh.save();
+              }
+            }
           } catch {}
         }
-        await mem.save();
-        console.log(`Learning memory updated for user=${userId} weakTopics=${mem.weakTopics.length}`);
+        console.log(`Learning memory updated for user=${userId}`);
       }
     } catch (e) {
       console.log("Memory update failed (non-fatal):", e.message);

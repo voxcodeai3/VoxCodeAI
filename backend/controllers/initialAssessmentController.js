@@ -188,17 +188,30 @@ exports.completeAssessment = async (req, res) => {
     // active path/goal
     mem.activeLearningPath = a.learningPath;
     mem.activeLearningGoal = { type: "learning_path", learningPath: a.learningPath, name: a.learningPath.title || "Path" };
-    // weak topics detailed — merge
-    for (const w of result.weaknesses) {
-      if (!w.topic) continue;
-      const exists = (mem.weakTopicsDetailed || []).find((wt) => (wt.topicName || wt.topic) === w.topic);
-      if (!exists) {
-        mem.weakTopicsDetailed.push({ topicName: w.topic, topic: w.topic, reason: w.reason || "Assessment indicated difficulty", strength: "weak", lastReviewedAt: null });
-      }
-      if (!mem.weakTopics.includes(w.topic)) mem.weakTopics = [...mem.weakTopics, w.topic].slice(-20);
+    await mem.save();
+    // Centralized weak signals from assessment (Step 7) — path-scoped, no duplicates.
+    const { recordWeakSignal, recordEvent } = require("../services/memoryUpdateService");
+    for (const w of result.weaknesses || []) {
+      if (!w.topic && !w.topicName && !w.topicId) continue;
+      await recordWeakSignal(userId, {
+        learningPath: a.learningPath,
+        topicId: w.topicId || null,
+        topicName: w.topicName || w.topic,
+        reason: w.reason || "Assessment indicated difficulty",
+      }).catch(() => {});
     }
-    // learning session — start at recommended
-    mem.learningSession = {
+    await recordEvent(userId, {
+      type: "assessment_completed",
+      learningPath: a.learningPath,
+      stage: recStage ? recStage.id : null,
+      topic: recTopicId,
+      detail: `Level: ${result.overallLevel}`,
+    }).catch(() => {});
+    // Reload fresh copy for the session write below (service saved its own copies).
+    const mem2 = await LearningMemory.findOne({ user: userId });
+    const target = mem2 || mem;
+    // learning session — start at recommended (on the fresh copy)
+    target.learningSession = {
       status: "active",
       startedAt: new Date(),
       lastActivity: new Date(),
@@ -206,9 +219,9 @@ exports.completeAssessment = async (req, res) => {
       stage: recStage ? recStage.id : null,
       topic: recTopicId,
     };
-    mem.lastActivity = new Date();
-    mem.lastOpenedAt = new Date();
-    await mem.save();
+    target.lastActivity = new Date();
+    target.lastOpenedAt = new Date();
+    await target.save();
 
     res.json({
       assessment: sanitizeForStudent(a),

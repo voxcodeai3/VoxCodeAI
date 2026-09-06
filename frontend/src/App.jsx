@@ -21,6 +21,7 @@ import Projects from './pages/Projects'
 import OAuthCallback from './pages/OAuthCallback'
 import AuthLoading from './components/AuthLoading'
 import LearnDashboard from './pages/LearnDashboard'
+import LearnPage from './components/learn/ai-first/LearnPage'
 import CourseListing from './pages/CourseListing'
 import CourseDetail from './pages/CourseDetail'
 import LessonViewer from './pages/LessonViewer'
@@ -169,7 +170,7 @@ function App() {
             path="/learn"
             element={
               <ProtectedRoute>
-                <LearnDashboard />
+                <LearnPage />
               </ProtectedRoute>
             }
           />
