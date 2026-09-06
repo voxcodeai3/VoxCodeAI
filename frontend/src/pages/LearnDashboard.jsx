@@ -8,6 +8,7 @@ import LearningStackCard from '../components/learn/LearningStackCard';
 import { CATEGORIES, PROGRAMMING_LANGUAGES, FRONTEND_STACKS, BACKEND_STACKS, PYTHON_FULLSTACK, JAVA_FULLSTACK, MOBILE_STACKS, DATABASES, TOOLS } from '../data/learnCatalog';
 import learningApi from '../services/learningApi';
 import learningMemoryApi from '../services/learningMemoryApi';
+import { getReview, markReviewed, getProgressSummary } from '../services/progressApi';
 
 function Section({ id, title, subtitle, icon: Icon, children }) {
   return (
@@ -53,6 +54,86 @@ function ContinueBanner({ dashboard, resume, onContinue }) {
       <button onClick={onContinue} className="px-5 py-2.5 bg-black text-white rounded-lg text-sm font-medium flex items-center gap-2 shrink-0">
         <Play className="w-4 h-4" /> Continue Learning <ChevronRight className="w-4 h-4" />
       </button>
+    </div>
+  );
+}
+
+function ReviewStrip({ activePathId }) {
+  const [items, setItems] = useState([]);
+  const [summary, setSummary] = useState(null);
+  const [busy, setBusy] = useState(null);
+
+  useEffect(() => {
+    if (!activePathId) return;
+    let cancelled = false;
+    (async () => {
+      try {
+        const [rev, sum] = await Promise.all([
+          getReview(activePathId).catch(() => []),
+          getProgressSummary(activePathId).catch(() => null),
+        ]);
+        if (!cancelled) {
+          setItems(rev || []);
+          setSummary(sum);
+        }
+      } catch {}
+    })();
+    return () => { cancelled = true; };
+  }, [activePathId]);
+
+  if (!activePathId) return null;
+  if (!items.length && !summary) return null;
+
+  const handleReviewed = async (topicId) => {
+    setBusy(topicId);
+    try {
+      await markReviewed(topicId, activePathId);
+      const rev = await getReview(activePathId).catch(() => []);
+      setItems(rev || []);
+    } catch {}
+    setBusy(null);
+  };
+
+  const priStyle = (p) =>
+    p === 'HIGH'
+      ? 'border-rose-400/20 bg-rose-400/10 text-rose-300'
+      : p === 'MEDIUM'
+        ? 'border-amber-400/20 bg-amber-400/10 text-amber-300'
+        : 'border-white/[0.08] bg-white/[0.03] text-white/50';
+
+  return (
+    <div className="mt-4 border border-white/[0.06] rounded-xl p-4 bg-white/[0.02]">
+      {summary && (
+        <div className="mb-3">
+          <div className="flex items-center justify-between text-xs text-white/50 mb-1.5">
+            <span>{summary.path?.title || 'Progress'}</span>
+            <span>{summary.completed}/{summary.total} topics · {summary.percent}%</span>
+          </div>
+          <div className="h-1.5 rounded-full bg-white/[0.06] overflow-hidden">
+            <div className="h-full rounded-full bg-cyan-400/60 transition-all" style={{ width: `${summary.percent || 0}%` }} />
+          </div>
+        </div>
+      )}
+      {items.length > 0 && (
+        <div>
+          <div className="text-[11px] tracking-widest text-white/40 mb-2">NEEDS REVIEW</div>
+          <div className="space-y-2">
+            {items.slice(0, 4).map((it) => (
+              <div key={String(it.topicId || it.topicName)} className="flex items-center gap-2">
+                <span className={`text-[10px] px-1.5 py-0.5 rounded border shrink-0 ${priStyle(it.priority)}`}>{it.priority}</span>
+                <span className="text-xs text-white/70 truncate flex-1" title={it.reason || ''}>{it.topicName}</span>
+                <button
+                  onClick={() => it.topicId && handleReviewed(it.topicId)}
+                  disabled={!it.topicId || busy === it.topicId}
+                  className="text-[11px] text-cyan-400 hover:text-cyan-300 disabled:opacity-40 shrink-0"
+                >
+                  {busy === it.topicId ? '…' : 'Mark reviewed'}
+                </button>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </div>
   );
 }
@@ -194,6 +275,7 @@ export default function LearningDashboard() {
         </div>
 
         <ContinueBanner dashboard={dashboard} resume={resume} onContinue={handleContinue} />
+        <ReviewStrip activePathId={resume?.activeLearningPath?._id || dashboard?.activePath?._id} />
         {resume && !resume.hasProgress && (
           <div className="mt-4 border border-white/[0.06] rounded-xl p-4 bg-white/[0.02] flex items-center justify-between">
             <div className="text-sm text-white/60">Start your learning journey — choose a path below.</div>
