@@ -178,7 +178,7 @@ export default function VoxCode() {
       </header>
 
       {/* ── history (left) ── */}
-      <div className="absolute left-4 top-4 z-30">
+      <div className="absolute left-3 top-3 z-30 sm:left-4 sm:top-4">
         <HistoryButton onClick={() => setIsHistoryOpen(true)} />
       </div>
 
@@ -188,7 +188,7 @@ export default function VoxCode() {
         onClick={toggleVoiceOutput}
         aria-label={voiceEnabled ? 'Turn voice off' : 'Turn voice on'}
         title={voiceEnabled ? 'Voice: ON — click to mute' : 'Voice: OFF — click to enable'}
-        className={`absolute right-16 top-4 z-30 rounded-full border p-2.5 backdrop-blur-md transition-all duration-300 active:scale-95 ${voiceEnabled ? 'border-[#305080]/20 bg-[#050814]/50 text-[#60a0e0]/60 hover:border-[#5080c0]/40 hover:text-[#80c0ff]/80' : 'border-amber-500/20 bg-amber-500/10 text-amber-400/60 hover:text-amber-400'}`}
+        className={`absolute right-14 top-3 z-30 rounded-full border p-2 sm:right-16 sm:top-4 sm:p-2.5 backdrop-blur-md transition-all duration-300 active:scale-95 ${voiceEnabled ? 'border-[#305080]/20 bg-[#050814]/50 text-[#60a0e0]/60 hover:border-[#5080c0]/40 hover:text-[#80c0ff]/80' : 'border-amber-500/20 bg-amber-500/10 text-amber-400/60 hover:text-amber-400'}`}
       >
         {voiceEnabled ? <Volume2 className="h-3.5 w-3.5" /> : <VolumeX className="h-3.5 w-3.5" />}
       </button>
@@ -198,7 +198,7 @@ export default function VoxCode() {
         type="button"
         onClick={logout}
         aria-label="Logout"
-        className="absolute right-4 top-4 z-30 rounded-full border border-[#305080]/20 bg-[#050814]/50 p-2.5 text-[#60a0e0]/30 backdrop-blur-md transition-all duration-300 hover:border-[#5080c0]/40 hover:text-[#80c0ff]/80 hover:shadow-[0_0_20px_-4px_rgba(50,100,200,0.35)] active:scale-95"
+        className="absolute right-3 top-3 z-30 rounded-full border border-[#305080]/20 bg-[#050814]/50 p-2 text-[#60a0e0]/30 backdrop-blur-md transition-all duration-300 hover:border-[#5080c0]/40 hover:text-[#80c0ff]/80 hover:shadow-[0_0_20px_-4px_rgba(50,100,200,0.35)] active:scale-95 sm:right-4 sm:top-4 sm:p-2.5"
       >
         <LogOut className="h-3.5 w-3.5" />
       </button>
@@ -373,11 +373,11 @@ export default function VoxCode() {
       {!isWorkspaceOpen && <TextConsole />}
 
       {/* Bottom-left buttons */}
-      <div className="absolute bottom-4 left-4 z-30 flex items-center gap-2">
+      <div className="absolute bottom-3 left-3 z-30 flex items-center gap-1.5 sm:bottom-4 sm:left-4 sm:gap-2">
         <button
           type="button"
           onClick={() => navigate('/learn')}
-          className="flex items-center gap-2 rounded-xl border border-cyan-500/10 bg-cyan-500/[0.03] px-3 py-2 text-[10px] text-cyan-400/60 hover:text-cyan-400 hover:border-cyan-500/20 transition-all"
+          className="flex items-center gap-1.5 rounded-lg border border-cyan-500/10 bg-cyan-500/[0.03] px-2.5 py-1.5 text-[9px] text-cyan-400/60 hover:text-cyan-400 hover:border-cyan-500/20 transition-all sm:gap-2 sm:rounded-xl sm:px-3 sm:py-2 sm:text-[10px]"
         >
           <BookOpen className="h-3 w-3" />
           <span>LEARN</span>
@@ -385,7 +385,7 @@ export default function VoxCode() {
         <button
           type="button"
           onClick={() => setIsWorkspaceOpen(true)}
-          className="flex items-center gap-2 rounded-xl border border-white/[0.06] bg-white/[0.02] px-3 py-2 text-[10px] text-white/30 hover:text-white/50 hover:border-white/[0.1] transition-all"
+          className="flex items-center gap-1.5 rounded-lg border border-white/[0.06] bg-white/[0.02] px-2.5 py-1.5 text-[9px] text-white/30 hover:text-white/50 hover:border-white/[0.1] transition-all sm:gap-2 sm:rounded-xl sm:px-3 sm:py-2 sm:text-[10px]"
         >
           <Code2 className="h-3 w-3" />
           <span>CODE</span>
@@ -393,7 +393,7 @@ export default function VoxCode() {
         <button
           type="button"
           onClick={() => navigate('/learning')}
-          className="flex items-center gap-2 rounded-xl border border-white/[0.06] bg-white/[0.02] px-3 py-2 text-[10px] text-white/30 hover:text-white/50 hover:border-white/[0.1] transition-all"
+          className="flex items-center gap-1.5 rounded-lg border border-white/[0.06] bg-white/[0.02] px-2.5 py-1.5 text-[9px] text-white/30 hover:text-white/50 hover:border-white/[0.1] transition-all sm:gap-2 sm:rounded-xl sm:px-3 sm:py-2 sm:text-[10px]"
         >
           <BarChart3 className="h-3 w-3" />
           <span>PROGRESS</span>

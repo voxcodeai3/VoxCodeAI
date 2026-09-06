@@ -63,13 +63,13 @@ export default function PathSelector({ onSelect }) {
   }
 
   return (
-    <div className="max-w-5xl mx-auto">
-      <div className="mb-6">
-        <h1 className="text-2xl font-bold tracking-tight text-white">Choose a Learning Path</h1>
+    <div className="max-w-5xl mx-auto px-3 sm:px-4">
+      <div className="mb-5 sm:mb-6">
+        <h1 className="text-xl font-bold tracking-tight text-white sm:text-2xl">Choose a Learning Path</h1>
         <p className="text-sm text-white/50 mt-1">Select what you want to learn. You'll get a personalized roadmap and an AI teacher to guide you.</p>
       </div>
 
-      <div className="mb-5 space-y-3">
+      <div className="mb-4 space-y-3 sm:mb-5">
         <div className="relative">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
           <input
@@ -106,7 +106,7 @@ export default function PathSelector({ onSelect }) {
         </div>
       </div>
 
-      <div className="space-y-8">
+      <div className="space-y-6 sm:space-y-8">
         {categories.map(cat => {
           const meta = CATEGORY_META[cat] || { label: cat, icon: Layers, desc: '' };
           const Icon = meta.icon;
@@ -117,7 +117,7 @@ export default function PathSelector({ onSelect }) {
                 <h2 className="text-sm font-semibold tracking-widest text-white/60 uppercase">{meta.label}</h2>
               </div>
               <p className="text-xs text-white/40 mb-3">{meta.desc}</p>
-              <div className="grid md:grid-cols-2 gap-2">
+              <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
                 {grouped[cat].map(path => (
                   <PathCard key={path._id} path={path} onSelect={onSelect} />
                 ))}

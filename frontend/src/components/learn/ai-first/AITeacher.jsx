@@ -113,10 +113,10 @@ export default function AITeacher({ sessionId, session, onStateChange, onMessage
 
   return (
     <div className="flex flex-col h-full">
-      <div className="flex-1 overflow-y-auto px-4 py-3 space-y-3 min-h-0">
+      <div className="flex-1 overflow-y-auto px-3 py-3 space-y-3 min-h-0 sm:px-4">
         {messages.map(msg => (
           <div key={msg.id} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-            <div className={`max-w-[85%] rounded-lg px-3 py-2 text-sm leading-relaxed ${
+            <div className={`max-w-[90%] rounded-lg px-3 py-2 text-sm leading-relaxed sm:max-w-[85%] ${
               msg.role === 'user'
                 ? 'bg-cyan-500/15 text-white/90 border border-cyan-400/20'
                 : msg.isError
@@ -171,7 +171,7 @@ export default function AITeacher({ sessionId, session, onStateChange, onMessage
         <div ref={messagesEndRef} />
       </div>
 
-      <div className="border-t border-white/[0.06] px-3 py-2">
+      <div className="border-t border-white/[0.06] px-3 py-2 safe-area-inset-bottom">
         {voice.errorMessage && (
           <div className="mb-2 px-2 py-1.5 rounded bg-amber-400/10 border border-amber-400/20 flex items-center gap-2">
             <AlertCircle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
@@ -179,10 +179,10 @@ export default function AITeacher({ sessionId, session, onStateChange, onMessage
           </div>
         )}
 
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5 sm:gap-2">
           <button
             onClick={voice.toggleVoice}
-            className={`p-1.5 rounded transition-colors ${
+            className={`p-2 rounded-lg transition-colors min-w-[36px] min-h-[36px] flex items-center justify-center ${
               voice.voiceEnabled ? 'text-cyan-400 bg-cyan-400/10' : 'text-white/30 hover:text-white/50'
             }`}
             title={voice.voiceEnabled ? 'Mute AI voice' : 'Enable AI voice'}
@@ -194,7 +194,7 @@ export default function AITeacher({ sessionId, session, onStateChange, onMessage
             <button
               onClick={handleVoiceToggle}
               disabled={sending}
-              className={`p-1.5 rounded transition-colors ${
+              className={`p-2 rounded-lg transition-colors min-w-[36px] min-h-[36px] flex items-center justify-center ${
                 voice.isListening
                   ? 'text-rose-400 bg-rose-400/10 animate-pulse'
                   : voice.isSpeaking
@@ -213,14 +213,14 @@ export default function AITeacher({ sessionId, session, onStateChange, onMessage
             onChange={e => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
             placeholder={voice.isListening ? 'Listening...' : 'Ask your teacher...'}
-            className="flex-1 bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-2 text-sm text-white placeholder-white/30 focus:outline-none focus:border-white/15 transition-colors"
+            className="flex-1 min-w-0 bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-2 text-sm text-white placeholder-white/30 focus:outline-none focus:border-white/15 transition-colors"
             disabled={sending || voice.isListening}
           />
 
           <button
             onClick={() => sendMessage(input)}
             disabled={!input.trim() || sending || voice.isListening}
-            className="p-2 rounded-lg bg-cyan-500/15 text-cyan-400 hover:bg-cyan-500/25 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+            className="p-2 rounded-lg bg-cyan-500/15 text-cyan-400 hover:bg-cyan-500/25 disabled:opacity-30 disabled:cursor-not-allowed transition-colors min-w-[36px] min-h-[36px] flex items-center justify-center"
           >
             <Send className="w-4 h-4" />
           </button>

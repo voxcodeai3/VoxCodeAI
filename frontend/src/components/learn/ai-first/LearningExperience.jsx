@@ -196,8 +196,8 @@ export default function LearningExperience({ pathId, onSwitchPath }) {
   return (
     <div className="min-h-[calc(100vh-4rem)]">
       {/* Mobile sidebar toggle */}
-      <div className="lg:hidden border-b border-white/[0.06] px-4 py-2 flex items-center gap-3">
-        <button onClick={() => setSidebarOpen(!sidebarOpen)} className="text-white/50 hover:text-white/80">
+      <div className="lg:hidden border-b border-white/[0.06] px-3 py-2 flex items-center gap-2 sm:px-4 sm:gap-3">
+        <button onClick={() => setSidebarOpen(!sidebarOpen)} className="text-white/50 hover:text-white/80 p-1 min-w-[32px] min-h-[32px] flex items-center justify-center">
           <BookOpen className="w-4 h-4" />
         </button>
         <div className="text-xs text-white/40 truncate">{pathTitle}</div>
@@ -222,7 +222,7 @@ export default function LearningExperience({ pathId, onSwitchPath }) {
                   </div>
                 )}
               </div>
-              <button onClick={() => setSidebarOpen(false)} className="lg:hidden text-white/40 hover:text-white/60">
+              <button onClick={() => setSidebarOpen(false)} className="lg:hidden text-white/40 hover:text-white/60 p-1 min-w-[32px] min-h-[32px] flex items-center justify-center">
                 <ChevronLeft className="w-4 h-4" />
               </button>
             </div>
@@ -248,7 +248,7 @@ export default function LearningExperience({ pathId, onSwitchPath }) {
                       <span className="text-white/60 truncate flex-1">{item.topicName}</span>
                       <button
                         onClick={() => item.topicId && handleReviewTopic({ id: item.topicId, title: item.topicName })}
-                        className="text-cyan-400/60 hover:text-cyan-400 shrink-0"
+                        className="text-cyan-400/60 hover:text-cyan-400 shrink-0 min-w-[32px] min-h-[32px] flex items-center justify-center"
                       >
                         Review
                       </button>
@@ -277,9 +277,9 @@ export default function LearningExperience({ pathId, onSwitchPath }) {
         {/* Main Content */}
         <main className="flex-1 min-w-0 flex flex-col h-screen">
           {/* Header */}
-          <div className="border-b border-white/[0.06] px-4 py-3">
+          <div className="border-b border-white/[0.06] px-3 py-2 sm:px-4 sm:py-3">
             <div className="flex items-center justify-between">
-              <div className="flex items-center gap-3 min-w-0">
+              <div className="flex items-center gap-2 min-w-0 sm:gap-3">
                 {currentTopic && (
                   <div className="min-w-0">
                     <div className="text-sm font-medium text-white/90 truncate">{currentTopic.title}</div>
@@ -315,26 +315,26 @@ export default function LearningExperience({ pathId, onSwitchPath }) {
                 </div>
 
                 {/* Action Bar */}
-                <div className="border-t border-white/[0.06] px-4 py-3">
-                  <div className="flex items-center gap-2 flex-wrap">
+                <div className="border-t border-white/[0.06] px-3 py-2 sm:px-4 sm:py-3">
+                  <div className="flex items-center gap-1.5 flex-wrap sm:gap-2">
                     {(teachingState === 'ready_for_practice' || teachingState === 'completed') && (
                       <>
                         <button
                           onClick={handleStartQuiz}
-                          className="px-3 py-1.5 rounded-lg border border-white/[0.08] text-xs text-white/60 hover:text-white/80 hover:bg-white/[0.04] flex items-center gap-1.5"
+                          className="px-2.5 py-1.5 rounded-lg border border-white/[0.08] text-xs text-white/60 hover:text-white/80 hover:bg-white/[0.04] flex items-center gap-1.5 sm:px-3"
                         >
                           <BookOpen className="w-3.5 h-3.5" /> Quiz
                         </button>
                         <button
                           onClick={handlePractice}
-                          className="px-3 py-1.5 rounded-lg border border-cyan-400/20 text-xs text-cyan-400 hover:bg-cyan-400/10 flex items-center gap-1.5"
+                          className="px-2.5 py-1.5 rounded-lg border border-cyan-400/20 text-xs text-cyan-400 hover:bg-cyan-400/10 flex items-center gap-1.5 sm:px-3"
                         >
                           <Code2 className="w-3.5 h-3.5" /> Practice in Code
                         </button>
                         <button
                           onClick={handleCompleteTopic}
                           disabled={completing}
-                          className="px-3 py-1.5 rounded-lg bg-emerald-500/15 text-xs text-emerald-400 hover:bg-emerald-500/25 flex items-center gap-1.5 disabled:opacity-40 ml-auto"
+                          className="px-2.5 py-1.5 rounded-lg bg-emerald-500/15 text-xs text-emerald-400 hover:bg-emerald-500/25 flex items-center gap-1.5 disabled:opacity-40 ml-auto sm:px-3"
                         >
                           {completing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <CheckCircle2 className="w-3.5 h-3.5" />}
                           Complete & Next
@@ -344,7 +344,7 @@ export default function LearningExperience({ pathId, onSwitchPath }) {
                     {teachingState === 'mini_quiz' && (
                       <button
                         onClick={handleStartQuiz}
-                        className="px-3 py-1.5 rounded-lg bg-cyan-500/15 text-xs text-cyan-400 hover:bg-cyan-500/25 flex items-center gap-1.5"
+                        className="px-2.5 py-1.5 rounded-lg bg-cyan-500/15 text-xs text-cyan-400 hover:bg-cyan-500/25 flex items-center gap-1.5 sm:px-3"
                       >
                         <BookOpen className="w-3.5 h-3.5" /> Start Quiz
                       </button>
@@ -352,7 +352,7 @@ export default function LearningExperience({ pathId, onSwitchPath }) {
                     {progression?.decision === 'READY' && progression?.nextTopic && (
                       <button
                         onClick={handleNextTopic}
-                        className="px-3 py-1.5 rounded-lg bg-cyan-500/15 text-xs text-cyan-400 hover:bg-cyan-500/25 flex items-center gap-1.5 ml-auto"
+                        className="px-2.5 py-1.5 rounded-lg bg-cyan-500/15 text-xs text-cyan-400 hover:bg-cyan-500/25 flex items-center gap-1.5 ml-auto sm:px-3"
                       >
                         Next Topic <ArrowRight className="w-3.5 h-3.5" />
                       </button>

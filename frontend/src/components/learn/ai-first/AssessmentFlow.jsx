@@ -89,7 +89,7 @@ export default function AssessmentFlow({ pathId, onComplete }) {
   };
 
   return (
-    <div className="max-w-lg mx-auto p-4">
+    <div className="max-w-lg mx-auto p-3 sm:p-4">
       <div className="mb-4">
         <div className="text-xs text-white/40 mb-1">Placement Assessment</div>
         <div className="text-sm font-medium text-white/80">{pathInfo?.title || 'Learning Path'}</div>
@@ -98,7 +98,7 @@ export default function AssessmentFlow({ pathId, onComplete }) {
       <div className="flex items-center justify-between mb-2">
         <span className="text-xs text-white/40">Question {currentIdx + 1} of {total}</span>
       </div>
-      <div className="h-1 rounded-full bg-white/[0.06] overflow-hidden mb-5">
+      <div className="h-1 rounded-full bg-white/[0.06] overflow-hidden mb-4 sm:mb-5">
         <div className="h-full rounded-full bg-cyan-400/60 transition-all" style={{ width: `${progress}%` }} />
       </div>
 
@@ -114,7 +114,7 @@ export default function AssessmentFlow({ pathId, onComplete }) {
             <button
               key={i}
               onClick={() => handleAnswer(opt)}
-              className={`w-full text-left px-3 py-2.5 rounded-lg border text-sm transition-colors ${
+              className={`w-full text-left px-3 py-3 rounded-lg border text-sm transition-colors min-h-[44px] ${
                 answers[q.id] === opt
                   ? 'bg-cyan-500/15 border-cyan-400/30 text-white'
                   : 'bg-white/[0.02] border-white/[0.06] text-white/60 hover:bg-white/[0.04]'
@@ -137,7 +137,7 @@ export default function AssessmentFlow({ pathId, onComplete }) {
       <button
         onClick={handleSubmit}
         disabled={!answers[q.id] || submitting}
-        className="w-full px-4 py-2.5 rounded-lg bg-cyan-500/15 text-cyan-400 text-sm font-medium hover:bg-cyan-500/25 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+        className="w-full px-4 py-3 rounded-lg bg-cyan-500/15 text-cyan-400 text-sm font-medium hover:bg-cyan-500/25 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center gap-2 min-h-[44px]"
       >
         {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : currentIdx === total - 1 ? 'Complete Assessment' : 'Next'}
       </button>

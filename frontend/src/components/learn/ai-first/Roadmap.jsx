@@ -29,7 +29,7 @@ export default function Roadmap({ roadmap, summary, currentTopicId, completedTop
   }
 
   return (
-    <div className="space-y-4">
+    <div className="space-y-3 sm:space-y-4">
       {roadmap.stages.map((stage, si) => (
         <div key={stage.id || si}>
           <div className="text-[11px] font-semibold tracking-widest text-white/40 uppercase mb-2 px-1">
@@ -48,7 +48,7 @@ export default function Roadmap({ roadmap, summary, currentTopicId, completedTop
                 <button
                   key={tid || ti}
                   onClick={() => onTopicClick?.(topic, stage)}
-                  className={`w-full flex items-center gap-2 px-2 py-1.5 rounded text-left text-xs transition-colors ${
+                  className={`w-full flex items-center gap-2 px-2 py-2 rounded text-left text-xs transition-colors min-h-[36px] ${
                     isCurrent
                       ? 'bg-cyan-400/10 text-cyan-300'
                       : 'text-white/60 hover:bg-white/[0.04] hover:text-white/80'

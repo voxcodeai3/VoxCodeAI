@@ -113,12 +113,12 @@ export default function InlineQuiz({ quizId, onComplete, onBack }) {
   };
 
   return (
-    <div className="max-w-lg mx-auto p-4">
+    <div className="max-w-lg mx-auto p-3 sm:p-4">
       <div className="flex items-center justify-between mb-4">
         <span className="text-xs text-white/40">Question {currentIdx + 1} of {total}</span>
-        <button onClick={onBack} className="text-xs text-white/40 hover:text-white/60">Back to teacher</button>
+        <button onClick={onBack} className="text-xs text-white/40 hover:text-white/60 min-w-[32px] min-h-[32px] flex items-center justify-center">Back to teacher</button>
       </div>
-      <div className="h-1 rounded-full bg-white/[0.06] overflow-hidden mb-5">
+      <div className="h-1 rounded-full bg-white/[0.06] overflow-hidden mb-4 sm:mb-5">
         <div className="h-full rounded-full bg-cyan-400/60 transition-all" style={{ width: `${progress}%` }} />
       </div>
 
@@ -134,7 +134,7 @@ export default function InlineQuiz({ quizId, onComplete, onBack }) {
             <button
               key={i}
               onClick={() => handleAnswer(opt)}
-              className={`w-full text-left px-3 py-2.5 rounded-lg border text-sm transition-colors ${
+              className={`w-full text-left px-3 py-3 rounded-lg border text-sm transition-colors min-h-[44px] ${
                 answers[q.id] === opt
                   ? 'bg-cyan-500/15 border-cyan-400/30 text-white'
                   : 'bg-white/[0.02] border-white/[0.06] text-white/60 hover:bg-white/[0.04]'
@@ -186,7 +186,7 @@ export default function InlineQuiz({ quizId, onComplete, onBack }) {
         {voice.support.speech && (
           <button
             onClick={handleVoiceToggle}
-            className={`px-3 py-2 rounded-lg border text-xs flex items-center gap-1.5 ${
+            className={`px-3 py-2.5 rounded-lg border text-xs flex items-center gap-1.5 min-h-[44px] ${
               voice.isListening
                 ? 'border-rose-400/30 bg-rose-400/10 text-rose-400 animate-pulse'
                 : 'border-white/[0.08] text-white/50 hover:text-white/70'
@@ -199,14 +199,14 @@ export default function InlineQuiz({ quizId, onComplete, onBack }) {
         <button
           onClick={handleHint}
           disabled={hintLoading || !!feedback}
-          className="px-3 py-2 rounded-lg border border-white/[0.08] text-xs text-white/50 hover:text-white/70 disabled:opacity-30"
+          className="px-3 py-2.5 rounded-lg border border-white/[0.08] text-xs text-white/50 hover:text-white/70 disabled:opacity-30 min-h-[44px]"
         >
           {hintLoading ? '...' : 'Hint'}
         </button>
         <button
           onClick={handleSubmit}
           disabled={!answers[q.id] || submitting || !!feedback}
-          className="flex-1 px-3 py-2 rounded-lg bg-cyan-500/15 text-cyan-400 text-sm font-medium hover:bg-cyan-500/25 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center gap-2"
+          className="flex-1 px-3 py-2.5 rounded-lg bg-cyan-500/15 text-cyan-400 text-sm font-medium hover:bg-cyan-500/25 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center gap-2 min-h-[44px]"
         >
           {submitting ? <Loader2 className="w-4 h-4 animate-spin" /> : currentIdx === total - 1 ? 'Complete' : 'Submit'}
         </button>
