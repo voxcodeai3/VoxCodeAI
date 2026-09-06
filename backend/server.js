@@ -29,6 +29,7 @@ const teachingRoutes = require("./routes/teachingRoutes");
 const miniQuizRoutes = require("./routes/miniQuizRoutes");
 const practiceRoutes = require("./routes/practiceRoutes");
 const progressRoutes = require("./routes/progressRoutes");
+const ttsRoutes = require("./routes/ttsRoutes");
 
 const app = express();
 
@@ -96,6 +97,9 @@ app.use("/api/learning/memory", learningMemoryRoutes);
 
 // Admin routes (JWT + admin role required)
 app.use("/api/admin", adminRoutes);
+
+// TTS routes (JWT protected) — configurable AI text-to-speech
+app.use("/api/voice/tts", ttsRoutes);
 
 // Project version routes (JWT protected) — must be before project routes
 app.use("/api/projects", versionRoutes);

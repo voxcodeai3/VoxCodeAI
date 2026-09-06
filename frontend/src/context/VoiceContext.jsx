@@ -12,7 +12,8 @@ import {
   friendlyRecognitionError,
   isSpeechRecognitionSupported,
 } from '../services/speechRecognition';
-import * as tts from '../services/textToSpeech';
+import * as browserTts from '../services/textToSpeech';
+import * as aiTts from '../services/aiTts';
 
 /**
  * Central interaction state machine shared by VoiceWeave, the microphone
@@ -44,6 +45,7 @@ export function VoiceProvider({ children }) {
   const [errorMessage, setErrorMessage] = useState('');
   const [spokenMessageId, setSpokenMessageId] = useState(null);
   const [voiceEnabled, setVoiceEnabled] = useState(true);
+  const [aiTtsAvailable, setAiTtsAvailable] = useState(false);
 
   // recognition session refs
   const recognizerRef = useRef(null);
@@ -162,6 +164,11 @@ export function VoiceProvider({ children }) {
     }
   }, [interactionState, startLoop, stopLoop, detachStream]);
 
+  // Check AI TTS availability on mount
+  useEffect(() => {
+    aiTts.checkAiTtsStatus().then(setAiTtsAvailable).catch(() => {});
+  }, []);
+
   // ── recognition lifecycle ───────────────────────────────────────────────
 
   /** Route a finished recognition session to the message pipeline. */
@@ -266,7 +273,7 @@ export function VoiceProvider({ children }) {
 
   // ── text-to-speech lifecycle ────────────────────────────────────────────
 
-  const speakResponse = useCallback((text, messageId = null) => {
+  const speakResponse = useCallback(async (text, messageId = null) => {
     if (!voiceEnabled) return; // muted — skip speech
     const content = (text || '').trim();
     if (!content) {
@@ -275,7 +282,31 @@ export function VoiceProvider({ children }) {
     }
     setSpokenMessageId(messageId);
     setInteractionState('speaking');
-    tts.speak(content, {
+
+    // Try AI TTS first
+    if (aiTtsAvailable) {
+      const audioUrl = await aiTts.fetchAiTts(content);
+      if (audioUrl) {
+        aiTts.playAudio(audioUrl, {
+          onEnd: () => {
+            setSpokenMessageId(null);
+            setInteractionState((s) => (s === 'speaking' ? 'idle' : s));
+          },
+          onError: () => {
+            // Fall back to browser TTS
+            speakBrowser(content, messageId);
+          },
+        });
+        return;
+      }
+    }
+
+    // Fallback to browser TTS
+    speakBrowser(content, messageId);
+  }, [voiceEnabled, aiTtsAvailable]);
+
+  function speakBrowser(content, messageId) {
+    browserTts.speak(content, {
       onStart: null,
       onEnd: () => {
         setSpokenMessageId(null);
@@ -286,17 +317,21 @@ export function VoiceProvider({ children }) {
         setInteractionState((s) => (s === 'speaking' ? 'idle' : s));
       },
     });
-  }, [voiceEnabled]);
+  }
 
   const stopSpeaking = useCallback(() => {
-    tts.stop();
+    aiTts.stopAudio();
+    browserTts.stop();
     setSpokenMessageId(null);
     setInteractionState((s) => (s === 'speaking' ? 'idle' : s));
   }, []);
 
   const toggleVoice = useCallback(() => {
     setVoiceEnabled((prev) => {
-      if (prev) tts.stop(); // turning off — stop any current speech
+      if (prev) {
+        aiTts.stopAudio();
+        browserTts.stop();
+      }
       return !prev;
     });
   }, []);
@@ -320,7 +355,8 @@ export function VoiceProvider({ children }) {
         /* noop */
       }
       recognizerRef.current = null;
-      tts.stop();
+      aiTts.stopAudio();
+      browserTts.stop();
       loopingRef.current = false;
       if (rafRef.current) cancelAnimationFrame(rafRef.current);
       detachStream();
@@ -349,10 +385,11 @@ export function VoiceProvider({ children }) {
       errorMessage,
       spokenMessageId,
       voiceEnabled,
+      aiTtsAvailable,
       frequencyData: freqDataRef.current, // stable buffer, mutated per frame
       support: {
         speech: isSpeechRecognitionSupported(),
-        tts: tts.isTTSSupported(),
+        tts: browserTts.isTTSSupported() || aiTtsAvailable,
       },
       // actions
       startListening,
@@ -370,6 +407,7 @@ export function VoiceProvider({ children }) {
     errorMessage,
     spokenMessageId,
     voiceEnabled,
+    aiTtsAvailable,
     startListening,
     stopListening,
     speakResponse,
