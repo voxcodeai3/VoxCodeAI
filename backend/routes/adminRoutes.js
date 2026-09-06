@@ -10,6 +10,7 @@ const PlatformSettings = require("../models/PlatformSettings");
 const LearningPath = require("../models/LearningPath");
 const Stage = require("../models/Stage");
 const { Lesson } = require("../models/Course");
+const ttsService = require("../services/ttsService");
 
 // All admin routes require auth + admin
 router.use(authMiddleware, requireAdmin);
@@ -478,12 +479,14 @@ router.patch("/password", async (req, res) => {
 router.get("/settings", requirePermission("manageSettings"), async (req, res) => {
   try {
     const s = await PlatformSettings.getSettings();
+    const ttsStatus = ttsService.getStatus();
     return res.json({
       allowRegistration: s.allowRegistration,
       maintenanceMode: s.maintenanceMode,
       aiTeacherEnabled: s.aiTeacherEnabled,
       voiceAIEnabled: s.voiceAIEnabled,
       defaultAIModel: s.defaultAIModel,
+      tts: ttsStatus,
       updatedAt: s.updatedAt,
     });
   } catch (err) {

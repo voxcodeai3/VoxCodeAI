@@ -1,7 +1,7 @@
 const express = require("express");
 const router = express.Router();
 const authMiddleware = require("../middleware/authMiddleware");
-const { generateSpeech, isConfigured, MAX_TEXT_LENGTH } = require("../services/ttsService");
+const { generateSpeech, isConfigured, getStatus, MAX_TEXT_LENGTH } = require("../services/ttsService");
 
 // POST /api/voice/tts — generate speech audio
 router.post("/", authMiddleware, async (req, res) => {
@@ -39,9 +39,9 @@ router.post("/", authMiddleware, async (req, res) => {
   }
 });
 
-// GET /api/voice/tts/status — check if AI TTS is available
+// GET /api/voice/tts/status — check if AI TTS is available (safe, no secrets)
 router.get("/status", authMiddleware, (req, res) => {
-  res.json({ configured: isConfigured() });
+  res.json(getStatus());
 });
 
 module.exports = router;
