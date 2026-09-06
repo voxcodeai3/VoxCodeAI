@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { Send, Loader2, Volume2, VolumeX, Mic, MicOff } from 'lucide-react';
+import { Send, Loader2, Volume2, VolumeX, Mic, MicOff, AlertCircle } from 'lucide-react';
 import api from '../../../services/api';
 import { useVoice } from '../../../context/VoiceContext';
 
@@ -7,16 +7,15 @@ export default function AITeacher({ sessionId, session, onStateChange, onMessage
   const [messages, setMessages] = useState([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
-  const [ttsEnabled, setTtsEnabled] = useState(false);
   const messagesEndRef = useRef(null);
   const inputRef = useRef(null);
   const voice = useVoice();
-  const inputRef2 = useRef(input);
-  inputRef2.current = input;
+  const sendingRef = useRef(false);
+  sendingRef.current = sending;
 
   const scrollToBottom = useCallback(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  }, []);
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), [];
+  });
 
   useEffect(scrollToBottom, [messages, scrollToBottom]);
 
@@ -32,27 +31,33 @@ export default function AITeacher({ sessionId, session, onStateChange, onMessage
     }
   }, [session]);
 
+  const speakIfEnabled = useCallback((text, messageId) => {
+    if (voice.voiceEnabled && text) {
+      voice.speakResponse(text, messageId);
+    }
+  }, [voice]);
+
   useEffect(() => {
-    if (ttsEnabled && messages.length > 0) {
+    if (messages.length > 0) {
       const last = messages[messages.length - 1];
-      if (last.role === 'assistant' && last.id !== 'welcome') {
-        voice.speakResponse(last.content, last.id);
+      if (last.role === 'assistant' && last.id !== 'welcome' && !last.isError) {
+        speakIfEnabled(last.content, last.id);
       }
     }
-  }, [messages, ttsEnabled, voice]);
+  }, [messages, speakIfEnabled]);
 
-  const sendMessage = useCallback(async () => {
-    const text = input.trim();
-    if (!text || sending || !sessionId) return;
+  const sendMessage = useCallback(async (text) => {
+    const msg = (text || '').trim();
+    if (!msg || sendingRef.current || !sessionId) return;
 
     setInput('');
     setSending(true);
 
-    const userMsg = { id: `u-${Date.now()}`, role: 'user', content: text };
+    const userMsg = { id: `u-${Date.now()}`, role: 'user', content: msg };
     setMessages(prev => [...prev, userMsg]);
 
     try {
-      const { data } = await api.post(`/learning/teaching/session/${sessionId}/message`, { message: text });
+      const { data } = await api.post(`/learning/teaching/session/${sessionId}/message`, { message: msg });
       const aiMsg = {
         id: `ai-${Date.now()}`,
         role: 'assistant',
@@ -75,33 +80,36 @@ export default function AITeacher({ sessionId, session, onStateChange, onMessage
       setSending(false);
       inputRef.current?.focus();
     }
-  }, [input, sending, sessionId, onStateChange, onMessage]);
+  }, [sessionId, onStateChange, onMessage]);
 
   const handleKeyDown = (e) => {
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
-      sendMessage();
+      sendMessage(input);
     }
   };
 
-  const handleVoiceToggle = () => {
+  const handleVoiceToggle = useCallback(() => {
     if (voice.isListening) {
       voice.stopListening();
     } else {
+      if (voice.isSpeaking) {
+        voice.stopSpeaking();
+      }
       voice.startListening();
     }
-  };
+  }, [voice]);
 
   useEffect(() => {
     voice.setFinalTranscriptHandler((spokenText) => {
-      if (spokenText && !inputRef2.current) {
-        setInput(spokenText);
-      } else if (spokenText) {
-        setInput(prev => prev + ' ' + spokenText);
+      if (spokenText && !sendingRef.current) {
+        sendMessage(spokenText);
       }
     });
     return () => voice.setFinalTranscriptHandler(null);
-  }, [voice]);
+  }, [voice, sendMessage]);
+
+  const voiceStateLabel = voice.isListening ? 'Listening...' : voice.isSpeaking ? 'Speaking...' : null;
 
   return (
     <div className="flex flex-col h-full">
@@ -130,6 +138,7 @@ export default function AITeacher({ sessionId, session, onStateChange, onMessage
             </div>
           </div>
         ))}
+
         {sending && (
           <div className="flex justify-start">
             <div className="bg-white/[0.04] border border-white/[0.06] rounded-lg px-3 py-2 flex items-center gap-2">
@@ -138,44 +147,79 @@ export default function AITeacher({ sessionId, session, onStateChange, onMessage
             </div>
           </div>
         )}
+
+        {voice.isListening && (
+          <div className="flex justify-start">
+            <div className="bg-cyan-500/10 border border-cyan-400/20 rounded-lg px-3 py-2 flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
+              <span className="text-xs text-cyan-300">
+                {voice.transcript || 'Listening...'}
+              </span>
+            </div>
+          </div>
+        )}
+
+        {voice.isSpeaking && (
+          <div className="flex justify-start">
+            <div className="bg-white/[0.04] border border-white/[0.06] rounded-lg px-3 py-2 flex items-center gap-2">
+              <Volume2 className="w-3.5 h-3.5 text-cyan-400 animate-pulse" />
+              <span className="text-xs text-white/40">Speaking...</span>
+            </div>
+          </div>
+        )}
+
         <div ref={messagesEndRef} />
       </div>
 
       <div className="border-t border-white/[0.06] px-3 py-2">
+        {voice.errorMessage && (
+          <div className="mb-2 px-2 py-1.5 rounded bg-amber-400/10 border border-amber-400/20 flex items-center gap-2">
+            <AlertCircle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+            <span className="text-[11px] text-amber-300">{voice.errorMessage}</span>
+          </div>
+        )}
+
         <div className="flex items-center gap-2">
           <button
-            onClick={() => setTtsEnabled(!ttsEnabled)}
+            onClick={voice.toggleVoice}
             className={`p-1.5 rounded transition-colors ${
-              ttsEnabled ? 'text-cyan-400 bg-cyan-400/10' : 'text-white/30 hover:text-white/50'
+              voice.voiceEnabled ? 'text-cyan-400 bg-cyan-400/10' : 'text-white/30 hover:text-white/50'
             }`}
-            title={ttsEnabled ? 'Mute AI voice' : 'Enable AI voice'}
+            title={voice.voiceEnabled ? 'Mute AI voice' : 'Enable AI voice'}
           >
-            {ttsEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+            {voice.voiceEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
           </button>
 
-          <button
-            onClick={handleVoiceToggle}
-            className={`p-1.5 rounded transition-colors ${
-              voice.isListening ? 'text-rose-400 bg-rose-400/10' : 'text-white/30 hover:text-white/50'
-            }`}
-            title={voice.isListening ? 'Stop listening' : 'Speak'}
-          >
-            {voice.isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
-          </button>
+          {voice.support.speech ? (
+            <button
+              onClick={handleVoiceToggle}
+              disabled={sending}
+              className={`p-1.5 rounded transition-colors ${
+                voice.isListening
+                  ? 'text-rose-400 bg-rose-400/10 animate-pulse'
+                  : voice.isSpeaking
+                    ? 'text-amber-400 bg-amber-400/10'
+                    : 'text-white/30 hover:text-white/50'
+              } disabled:opacity-30`}
+              title={voice.isListening ? 'Stop listening' : 'Speak to teacher'}
+            >
+              {voice.isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+            </button>
+          ) : null}
 
           <input
             ref={inputRef}
             value={input}
             onChange={e => setInput(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Ask your teacher..."
+            placeholder={voice.isListening ? 'Listening...' : 'Ask your teacher...'}
             className="flex-1 bg-white/[0.04] border border-white/[0.08] rounded-lg px-3 py-2 text-sm text-white placeholder-white/30 focus:outline-none focus:border-white/15 transition-colors"
-            disabled={sending}
+            disabled={sending || voice.isListening}
           />
 
           <button
-            onClick={sendMessage}
-            disabled={!input.trim() || sending}
+            onClick={() => sendMessage(input)}
+            disabled={!input.trim() || sending || voice.isListening}
             className="p-2 rounded-lg bg-cyan-500/15 text-cyan-400 hover:bg-cyan-500/25 disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
           >
             <Send className="w-4 h-4" />

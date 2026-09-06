@@ -1,6 +1,7 @@
-import { useState, useEffect } from 'react';
-import { Loader2, CheckCircle2, XCircle, ArrowRight, RotateCcw } from 'lucide-react';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import { Loader2, CheckCircle2, XCircle, ArrowRight, RotateCcw, Mic, MicOff, AlertCircle } from 'lucide-react';
 import * as quizApi from '../../../services/miniQuizApi';
+import { useVoice } from '../../../context/VoiceContext';
 
 export default function InlineQuiz({ quizId, onComplete, onBack }) {
   const [quiz, setQuiz] = useState(null);
@@ -12,14 +13,52 @@ export default function InlineQuiz({ quizId, onComplete, onBack }) {
   const [result, setResult] = useState(null);
   const [hint, setHint] = useState(null);
   const [hintLoading, setHintLoading] = useState(false);
+  const voice = useVoice();
+  const answersRef = useRef(answers);
+  answersRef.current = answers;
 
   useEffect(() => {
     if (!quizId) { setLoading(false); return; }
-    setLoading(true);
     quizApi.getQuiz(quizId)
       .then(r => { setQuiz(r.quiz); setLoading(false); })
       .catch(() => { setLoading(false); });
   }, [quizId]);
+
+  useEffect(() => {
+    voice.setFinalTranscriptHandler((spokenText) => {
+      if (!spokenText || !quiz) return;
+      const questions = quiz.questions || [];
+      const q = questions[currentIdx];
+      if (!q) return;
+
+      if (q.type === 'multiple_choice' || q.type === 'true_false') {
+        const options = q.options || [];
+        const lower = spokenText.toLowerCase().trim();
+        const matched = options.find(opt => opt.toLowerCase().trim() === lower)
+          || options.find(opt => opt.toLowerCase().includes(lower))
+          || options.find(opt => lower.includes(opt.toLowerCase().trim()));
+        if (matched) {
+          setAnswers(prev => ({ ...prev, [q.id]: matched }));
+          setFeedback(null);
+          setHint(null);
+        }
+      } else {
+        setAnswers(prev => ({ ...prev, [q.id]: spokenText }));
+        setFeedback(null);
+        setHint(null);
+      }
+    });
+    return () => voice.setFinalTranscriptHandler(null);
+  }, [voice, quiz, currentIdx]);
+
+  const handleVoiceToggle = useCallback(() => {
+    if (voice.isListening) {
+      voice.stopListening();
+    } else {
+      if (voice.isSpeaking) voice.stopSpeaking();
+      voice.startListening();
+    }
+  }, [voice]);
 
   if (!quizId) return <div className="text-sm text-white/40 p-4">No quiz available.</div>;
   if (loading) return <div className="flex items-center justify-center py-8"><Loader2 className="w-5 h-5 text-white/40 animate-spin" /></div>;
@@ -115,6 +154,20 @@ export default function InlineQuiz({ quizId, onComplete, onBack }) {
         />
       )}
 
+      {voice.errorMessage && (
+        <div className="mb-2 px-2 py-1.5 rounded bg-amber-400/10 border border-amber-400/20 flex items-center gap-2">
+          <AlertCircle className="w-3.5 h-3.5 text-amber-400 shrink-0" />
+          <span className="text-[11px] text-amber-300">{voice.errorMessage}</span>
+        </div>
+      )}
+
+      {voice.isListening && (
+        <div className="mb-3 px-2 py-1.5 rounded bg-cyan-500/10 border border-cyan-400/20 flex items-center gap-2">
+          <div className="w-2 h-2 rounded-full bg-cyan-400 animate-pulse" />
+          <span className="text-xs text-cyan-300">{voice.transcript || 'Listening...'}</span>
+        </div>
+      )}
+
       {hint && (
         <div className="mb-3 p-3 rounded-lg bg-amber-400/10 border border-amber-400/20 text-xs text-amber-300">{hint}</div>
       )}
@@ -130,6 +183,19 @@ export default function InlineQuiz({ quizId, onComplete, onBack }) {
       )}
 
       <div className="flex gap-2">
+        {voice.support.speech && (
+          <button
+            onClick={handleVoiceToggle}
+            className={`px-3 py-2 rounded-lg border text-xs flex items-center gap-1.5 ${
+              voice.isListening
+                ? 'border-rose-400/30 bg-rose-400/10 text-rose-400 animate-pulse'
+                : 'border-white/[0.08] text-white/50 hover:text-white/70'
+            }`}
+          >
+            {voice.isListening ? <MicOff className="w-3.5 h-3.5" /> : <Mic className="w-3.5 h-3.5" />}
+            {voice.isListening ? 'Stop' : 'Voice'}
+          </button>
+        )}
         <button
           onClick={handleHint}
           disabled={hintLoading || !!feedback}
