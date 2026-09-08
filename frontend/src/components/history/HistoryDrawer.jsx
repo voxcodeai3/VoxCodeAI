@@ -1,16 +1,25 @@
-import { useEffect, useMemo, useState } from 'react';
-import { X, Plus, Loader2, MessageSquareDashed, Mic, Trophy, Trash2 } from 'lucide-react';
-import { useConversations } from '../../context/ConversationContext';
-import { useInterview } from '../../context/InterviewContext';
-import ConversationItem from './ConversationItem';
-import api from '../../services/api';
+import { useEffect, useMemo, useState } from "react";
+import {
+  X,
+  Plus,
+  Loader2,
+  MessageSquareDashed,
+  Mic,
+  Trophy,
+  Trash2,
+} from "lucide-react";
+import { useConversations } from "../../context/ConversationContext";
+import { useInterview } from "../../context/InterviewContext";
+import { useAI } from "../../context/AIContext";
+import ConversationItem from "./ConversationItem";
+import api from "../../services/api";
 
 function DeleteModal({ title, onConfirm, onCancel }) {
   return (
     <div
       className="fixed inset-0 z-[70] flex items-center justify-center bg-black/60 backdrop-blur-sm"
       onClick={onCancel}
-      onKeyDown={(e) => e.key === 'Escape' && onCancel()}
+      onKeyDown={(e) => e.key === "Escape" && onCancel()}
       role="dialog"
       aria-modal="true"
       tabIndex={-1}
@@ -19,9 +28,12 @@ function DeleteModal({ title, onConfirm, onCancel }) {
         className="w-[90vw] max-w-[360px] rounded-2xl border border-cyan-400/15 bg-[#080e1c]/95 backdrop-blur-2xl p-6 shadow-2xl"
         onClick={(e) => e.stopPropagation()}
       >
-        <p className="text-sm font-medium text-white mb-2">Delete conversation?</p>
+        <p className="text-sm font-medium text-white mb-2">
+          Delete conversation?
+        </p>
         <p className="text-xs text-cyan-400/50 mb-6 leading-relaxed">
-          This conversation will be permanently deleted. This action cannot be undone.
+          This conversation will be permanently deleted. This action cannot be
+          undone.
         </p>
         <div className="flex justify-end gap-3">
           <button
@@ -44,7 +56,12 @@ function DeleteModal({ title, onConfirm, onCancel }) {
   );
 }
 
-function HistoryDrawer({ isOpen, onClose, onSelectConversation, onSelectInterview }) {
+function HistoryDrawer({
+  isOpen,
+  onClose,
+  onSelectConversation,
+  onSelectInterview,
+}) {
   const {
     conversations,
     activeConversationId,
@@ -52,9 +69,9 @@ function HistoryDrawer({ isOpen, onClose, onSelectConversation, onSelectIntervie
     loadConversation,
     deleteConversation,
     renameConversation,
-    newConversation,
   } = useConversations();
 
+  const { clearConversation } = useAI();
   const [pendingDelete, setPendingDelete] = useState(null);
   const [pendingDeleteInterview, setPendingDeleteInterview] = useState(null);
   const [interviews, setInterviews] = useState([]);
@@ -65,17 +82,21 @@ function HistoryDrawer({ isOpen, onClose, onSelectConversation, onSelectIntervie
   useEffect(() => {
     if (!isOpen) return;
     setLoadingInterviews(true);
-    api.get('/interviews').then(({ data }) => {
-      setInterviews(data.sessions || []);
-    }).catch(() => {}).finally(() => setLoadingInterviews(false));
+    api
+      .get("/interviews")
+      .then(({ data }) => {
+        setInterviews(data.sessions || []);
+      })
+      .catch(() => {})
+      .finally(() => setLoadingInterviews(false));
   }, [isOpen]);
 
   // Close on Escape.
   useEffect(() => {
     if (!isOpen) return;
-    const handler = (e) => e.key === 'Escape' && onClose();
-    window.addEventListener('keydown', handler);
-    return () => window.removeEventListener('keydown', handler);
+    const handler = (e) => e.key === "Escape" && onClose();
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
   }, [isOpen, onClose]);
 
   // Group conversations by date.
@@ -89,7 +110,8 @@ function HistoryDrawer({ isOpen, onClose, onSelectConversation, onSelectIntervie
     for (const c of conversations) {
       const d = new Date(c.updatedAt);
       if (d.toDateString() === today) groups.Today.push(c);
-      else if (d.toDateString() === yesterday.toDateString()) groups.Yesterday.push(c);
+      else if (d.toDateString() === yesterday.toDateString())
+        groups.Yesterday.push(c);
       else groups.Earlier.push(c);
     }
     return groups;
@@ -102,7 +124,7 @@ function HistoryDrawer({ isOpen, onClose, onSelectConversation, onSelectIntervie
   };
 
   const handleNewConversation = () => {
-    newConversation();
+    clearConversation(); // Use AIContext to properly reset UI state
     onSelectConversation();
     onClose();
   };
@@ -116,11 +138,16 @@ function HistoryDrawer({ isOpen, onClose, onSelectConversation, onSelectIntervie
   const handleDeleteInterview = async () => {
     if (!pendingDeleteInterview) return;
     await deleteInterview(pendingDeleteInterview.id);
-    setInterviews((prev) => prev.filter((i) => i.id !== pendingDeleteInterview.id));
+    setInterviews((prev) =>
+      prev.filter((i) => i.id !== pendingDeleteInterview.id),
+    );
     setPendingDeleteInterview(null);
   };
 
-  const isEmpty = !loadingConversations && conversations.length === 0 && interviews.length === 0;
+  const isEmpty =
+    !loadingConversations &&
+    conversations.length === 0 &&
+    interviews.length === 0;
 
   if (!isOpen) return null;
 
@@ -129,18 +156,20 @@ function HistoryDrawer({ isOpen, onClose, onSelectConversation, onSelectIntervie
       {/* Backdrop — fades in */}
       <div
         className="fixed inset-0 z-[55] bg-black/40 backdrop-blur-sm"
-        style={{ animation: 'fadeIn 0.2s ease-out' }}
+        style={{ animation: "fadeIn 0.2s ease-out" }}
         onClick={onClose}
       />
 
       {/* Drawer — slides in from left */}
       <div
         className="fixed inset-y-0 left-0 z-[60] w-[320px] max-w-[85vw] bg-[#060c18]/95 backdrop-blur-2xl border-r border-cyan-400/10 flex flex-col shadow-2xl"
-        style={{ animation: 'slideInLeft 0.3s ease-out' }}
+        style={{ animation: "slideInLeft 0.3s ease-out" }}
       >
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-cyan-400/10">
-          <h2 className="text-sm font-semibold text-white tracking-wide">VOXCODE HISTORY</h2>
+          <h2 className="text-sm font-semibold text-white tracking-wide">
+            VOXCODE HISTORY
+          </h2>
           <button
             type="button"
             onClick={onClose}
@@ -175,9 +204,12 @@ function HistoryDrawer({ isOpen, onClose, onSelectConversation, onSelectIntervie
           {isEmpty && (
             <div className="flex flex-col items-center justify-center py-12 text-center">
               <MessageSquareDashed className="h-8 w-8 text-cyan-400/20 mb-3" />
-              <p className="text-xs font-medium text-white/60 mb-1">NO CONVERSATIONS YET</p>
+              <p className="text-xs font-medium text-white/60 mb-1">
+                NO CONVERSATIONS YET
+              </p>
               <p className="text-[10px] text-cyan-400/30 max-w-[180px] leading-relaxed">
-                Start talking to VoxCode and your coding sessions will appear here.
+                Start talking to VoxCode and your coding sessions will appear
+                here.
               </p>
             </div>
           )}
@@ -197,13 +229,15 @@ function HistoryDrawer({ isOpen, onClose, onSelectConversation, onSelectIntervie
                         conversation={c}
                         isActive={c.id === activeConversationId}
                         onSelect={handleSelect}
-                        onDelete={(id, title) => setPendingDelete({ id, title })}
+                        onDelete={(id, title) =>
+                          setPendingDelete({ id, title })
+                        }
                         onRename={renameConversation}
                       />
                     ))}
                   </div>
                 </div>
-              )
+              ),
             )}
 
           {/* Interview History */}
@@ -218,7 +252,10 @@ function HistoryDrawer({ isOpen, onClose, onSelectConversation, onSelectIntervie
                   <div key={interview.id} className="group relative">
                     <button
                       type="button"
-                      onClick={() => { onSelectInterview(interview); onClose(); }}
+                      onClick={() => {
+                        onSelectInterview(interview);
+                        onClose();
+                      }}
                       className="w-full flex items-center gap-3 rounded-xl border border-white/[0.04] bg-white/[0.02] px-3 py-2.5 text-left transition-all hover:bg-white/[0.04] hover:border-white/[0.08]"
                     >
                       <div className="h-8 w-8 rounded-full border border-cyan-400/10 bg-cyan-400/[0.04] flex items-center justify-center shrink-0">
@@ -227,20 +264,25 @@ function HistoryDrawer({ isOpen, onClose, onSelectConversation, onSelectIntervie
                       <div className="flex-1 min-w-0">
                         <p className="text-xs text-white/60 truncate">
                           {interview.type} Interview
-                          {interview.language ? ` · ${interview.language}` : ''}
+                          {interview.language ? ` · ${interview.language}` : ""}
                         </p>
                         <p className="text-[9px] text-white/25 mt-0.5">
-                          {interview.status === 'completed' ? 'Completed' : interview.status}
+                          {interview.status === "completed"
+                            ? "Completed"
+                            : interview.status}
                           {interview.score > 0 && ` · ${interview.score}/100`}
                         </p>
                       </div>
-                      {interview.status === 'completed' && (
+                      {interview.status === "completed" && (
                         <Trophy className="h-3 w-3 text-amber-400/40 shrink-0" />
                       )}
                     </button>
                     <button
                       type="button"
-                      onClick={(e) => { e.stopPropagation(); setPendingDeleteInterview(interview); }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setPendingDeleteInterview(interview);
+                      }}
                       className="absolute top-1.5 right-1.5 rounded-md p-1 text-white/0 group-hover:text-white/30 hover:!text-red-400 hover:bg-red-400/10 transition-colors"
                       aria-label="Delete interview"
                     >

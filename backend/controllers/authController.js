@@ -1,8 +1,10 @@
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const { OAuth2Client } = require("google-auth-library");
+const crypto = require("crypto");
 const User = require("../models/User");
 const PlatformSettings = require("../models/PlatformSettings");
+const emailService = require("../services/emailService");
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
@@ -10,7 +12,7 @@ function getGoogleClient() {
   return new OAuth2Client(
     process.env.GOOGLE_CLIENT_ID,
     process.env.GOOGLE_CLIENT_SECRET,
-    process.env.GOOGLE_CALLBACK_URL
+    process.env.GOOGLE_CALLBACK_URL,
   );
 }
 
@@ -43,11 +45,22 @@ function publicUser(user) {
     authProvider: user.authProvider || "local",
     role: user.role || "student",
     permissions: perms,
+    emailVerified: user.emailVerified,
   };
 }
 
 function signToken(user) {
-  return jwt.sign({ userId: user._id }, process.env.JWT_SECRET, { expiresIn: "7d" });
+  return jwt.sign({ userId: user._id }, process.env.JWT_SECRET, {
+    expiresIn: "7d",
+  });
+}
+
+function generateSecureCode() {
+  return crypto.randomInt(100000, 1000000).toString();
+}
+
+async function hashString(str) {
+  return bcrypt.hash(str, 10);
 }
 
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
@@ -80,55 +93,76 @@ async function register(req, res) {
     return res.status(400).json({ message: "Email is required" });
   }
   if (!EMAIL_REGEX.test(email)) {
-    return res.status(400).json({ message: "Please enter a valid email address" });
+    return res
+      .status(400)
+      .json({ message: "Please enter a valid email address" });
   }
   if (!password || password.length < 8) {
-    return res.status(400).json({ message: "Password must be at least 8 characters long" });
+    return res
+      .status(400)
+      .json({ message: "Password must be at least 8 characters long" });
   }
 
   try {
-    // Registration control — checked server-side so hiding the form is not enough
     try {
       const settings = await PlatformSettings.getSettings();
       if (settings.allowRegistration === false) {
-        return res.status(403).json({ message: "New student registration is currently disabled." });
+        return res
+          .status(403)
+          .json({ message: "New student registration is currently disabled." });
       }
-    } catch (_) {
-      // if settings lookup fails, allow registration (fail open for college project)
-    }
+    } catch (_) {}
 
     const existing = await User.findOne({ email });
     if (existing) {
-      return res.status(409).json({ message: "An account with this email already exists" });
+      return res
+        .status(409)
+        .json({ message: "An account with this email already exists" });
     }
 
     const hashedPassword = await bcrypt.hash(password, 10);
-    // Always create as student — ignore any role/permissions from client
+    const verificationCode = generateSecureCode();
+    const verificationCodeHash = await hashString(verificationCode);
+    const verificationExpiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 mins
+
     const user = await User.create({
       name,
       email,
       password: hashedPassword,
       authProvider: "local",
       role: "student",
+      emailVerified: false,
+      verificationCodeHash,
+      verificationExpiresAt,
+      verificationLastSentAt: new Date(),
     });
 
+    await emailService.sendVerificationEmail(email, verificationCode);
+
     return res.status(201).json({
-      message: "Account created successfully",
+      message: "Account created successfully. Please verify your email.",
       user: publicUser(user),
     });
   } catch (error) {
     if (error && error.code === 11000) {
-      return res.status(409).json({ message: "An account with this email already exists" });
+      return res
+        .status(409)
+        .json({ message: "An account with this email already exists" });
     }
     console.error("Register error:", error);
-    return res.status(500).json({ message: "Something went wrong on our side. Please try again." });
+    return res
+      .status(500)
+      .json({ message: "Something went wrong on our side. Please try again." });
   }
 }
 
 async function login(req, res) {
   const email = (req.body.email || "").trim().toLowerCase();
   const password = req.body.password || "";
-  const isAdminLogin = req.body.isAdminLogin === true || req.body.loginType === "admin" || req.body.role === "admin";
+  const isAdminLogin =
+    req.body.isAdminLogin === true ||
+    req.body.loginType === "admin" ||
+    req.body.role === "admin";
 
   if (!email || !password) {
     return res.status(400).json({ message: "Email and password are required" });
@@ -149,13 +183,23 @@ async function login(req, res) {
       return res.status(401).json({ message: "Invalid email or password." });
     }
 
+    if (user.authProvider === "local" && !user.emailVerified) {
+      return res
+        .status(403)
+        .json({
+          code: "EMAIL_UNVERIFIED",
+          message: "Please verify your email before signing in.",
+        });
+    }
+
     if (isAdminLogin) {
       if (user.role !== "admin" && user.role !== "super_admin") {
-        return res.status(403).json({ message: "You do not have administrator access." });
+        return res
+          .status(403)
+          .json({ message: "You do not have administrator access." });
       }
     }
 
-    // Update lastUsedAt on successful login
     user.lastUsedAt = new Date();
     await user.save();
 
@@ -168,7 +212,209 @@ async function login(req, res) {
     });
   } catch (error) {
     console.error("Login error:", error);
-    return res.status(500).json({ message: "Something went wrong on our side. Please try again." });
+    return res
+      .status(500)
+      .json({ message: "Something went wrong on our side. Please try again." });
+  }
+}
+
+async function verifyEmail(req, res) {
+  const email = (req.body.email || "").trim().toLowerCase();
+  const code = (req.body.code || "").trim();
+
+  if (!email || !code)
+    return res.status(400).json({ message: "Email and code are required." });
+
+  try {
+    const user = await User.findOne({ email }).select(
+      "+verificationCodeHash +verificationExpiresAt +verificationAttempts",
+    );
+    if (!user) return res.status(404).json({ message: "User not found." });
+    if (user.emailVerified)
+      return res.status(400).json({ message: "Email is already verified." });
+
+    if (!user.verificationCodeHash)
+      return res
+        .status(400)
+        .json({ message: "No verification code requested." });
+
+    if (user.verificationAttempts >= 5) {
+      return res
+        .status(429)
+        .json({
+          message: "Too many failed attempts. Please request a new code.",
+        });
+    }
+
+    if (new Date() > user.verificationExpiresAt) {
+      return res
+        .status(400)
+        .json({
+          message: "Verification code has expired. Please request a new one.",
+        });
+    }
+
+    const isValid = await bcrypt.compare(code, user.verificationCodeHash);
+    if (!isValid) {
+      user.verificationAttempts += 1;
+      await user.save();
+      return res.status(400).json({ message: "Invalid verification code." });
+    }
+
+    user.emailVerified = true;
+    user.verificationCodeHash = undefined;
+    user.verificationExpiresAt = undefined;
+    user.verificationAttempts = 0;
+    user.lastUsedAt = new Date();
+    await user.save();
+
+    const token = signToken(user);
+    return res.json({
+      message: "Email verified successfully.",
+      token,
+      user: publicUser(user),
+    });
+  } catch (error) {
+    console.error("verifyEmail error:", error);
+    return res.status(500).json({ message: "Something went wrong." });
+  }
+}
+
+async function resendVerification(req, res) {
+  const email = (req.body.email || "").trim().toLowerCase();
+  if (!email) return res.status(400).json({ message: "Email is required." });
+
+  try {
+    const user = await User.findOne({ email }).select(
+      "+verificationLastSentAt",
+    );
+    if (!user)
+      return res.json({
+        message: "If this email is registered, a new code has been sent.",
+      });
+    if (user.emailVerified)
+      return res.status(400).json({ message: "Email is already verified." });
+
+    if (
+      user.verificationLastSentAt &&
+      new Date() - user.verificationLastSentAt < 60000
+    ) {
+      return res
+        .status(429)
+        .json({
+          message: "Please wait 60 seconds before requesting a new code.",
+        });
+    }
+
+    const verificationCode = generateSecureCode();
+    user.verificationCodeHash = await hashString(verificationCode);
+    user.verificationExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
+    user.verificationAttempts = 0;
+    user.verificationLastSentAt = new Date();
+    await user.save();
+
+    await emailService.sendVerificationEmail(user.email, verificationCode);
+    return res.json({ message: "A new verification code has been sent." });
+  } catch (error) {
+    console.error("resendVerification error:", error);
+    return res.status(500).json({ message: "Something went wrong." });
+  }
+}
+
+async function forgotPassword(req, res) {
+  const email = (req.body.email || "").trim().toLowerCase();
+  if (!email) return res.status(400).json({ message: "Email is required." });
+
+  try {
+    const user = await User.findOne({ email }).select("+resetLastSentAt");
+    if (!user)
+      return res.json({
+        message:
+          "If this email is registered, a password reset code has been sent.",
+      });
+
+    if (user.resetLastSentAt && new Date() - user.resetLastSentAt < 60000) {
+      return res
+        .status(429)
+        .json({
+          message: "Please wait 60 seconds before requesting a new code.",
+        });
+    }
+
+    const resetCode = generateSecureCode();
+    user.resetCodeHash = await hashString(resetCode);
+    user.resetExpiresAt = new Date(Date.now() + 10 * 60 * 1000);
+    user.resetAttempts = 0;
+    user.resetLastSentAt = new Date();
+    await user.save();
+
+    await emailService.sendPasswordResetEmail(user.email, resetCode);
+    return res.json({
+      message:
+        "If this email is registered, a password reset code has been sent.",
+    });
+  } catch (error) {
+    console.error("forgotPassword error:", error);
+    return res.status(500).json({ message: "Something went wrong." });
+  }
+}
+
+async function resetPassword(req, res) {
+  const email = (req.body.email || "").trim().toLowerCase();
+  const code = (req.body.code || "").trim();
+  const newPassword = req.body.newPassword || "";
+
+  if (!email || !code || !newPassword)
+    return res
+      .status(400)
+      .json({ message: "Email, code, and new password are required." });
+  if (newPassword.length < 8)
+    return res
+      .status(400)
+      .json({ message: "Password must be at least 8 characters long." });
+
+  try {
+    const user = await User.findOne({ email }).select(
+      "+resetCodeHash +resetExpiresAt +resetAttempts",
+    );
+    if (!user)
+      return res
+        .status(400)
+        .json({ message: "Invalid or expired reset code." });
+
+    if (!user.resetCodeHash || new Date() > user.resetExpiresAt) {
+      return res
+        .status(400)
+        .json({ message: "Invalid or expired reset code." });
+    }
+
+    if (user.resetAttempts >= 5) {
+      return res
+        .status(429)
+        .json({
+          message: "Too many failed attempts. Please request a new code.",
+        });
+    }
+
+    const isValid = await bcrypt.compare(code, user.resetCodeHash);
+    if (!isValid) {
+      user.resetAttempts += 1;
+      await user.save();
+      return res.status(400).json({ message: "Invalid verification code." });
+    }
+
+    user.password = await hashString(newPassword);
+    user.resetCodeHash = undefined;
+    user.resetExpiresAt = undefined;
+    user.resetAttempts = 0;
+
+    user.emailVerified = true;
+
+    await user.save();
+    return res.json({ message: "Password has been successfully reset." });
+  } catch (error) {
+    console.error("resetPassword error:", error);
+    return res.status(500).json({ message: "Something went wrong." });
   }
 }
 
@@ -181,7 +427,9 @@ async function me(req, res) {
     return res.json({ user: publicUser(user) });
   } catch (error) {
     console.error("Me error:", error);
-    return res.status(500).json({ message: "Something went wrong on our side. Please try again." });
+    return res
+      .status(500)
+      .json({ message: "Something went wrong on our side. Please try again." });
   }
 }
 
@@ -273,11 +521,13 @@ async function googleCallback(req, res) {
         googleId,
         authProvider: "google",
         avatar,
+        emailVerified: true,
       });
     } else if (!user.googleId) {
       user.googleId = googleId;
       user.authProvider = "google";
       user.avatar = avatar;
+      user.emailVerified = true;
       await user.save();
     }
 
@@ -291,4 +541,14 @@ async function googleCallback(req, res) {
   }
 }
 
-module.exports = { register, login, me, googleAuth, googleCallback };
+module.exports = {
+  register,
+  login,
+  verifyEmail,
+  resendVerification,
+  forgotPassword,
+  resetPassword,
+  me,
+  googleAuth,
+  googleCallback,
+};

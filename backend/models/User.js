@@ -19,6 +19,18 @@ const userSchema = new mongoose.Schema(
       minlength: 8,
       select: false,
     },
+    emailVerified: {
+      type: Boolean,
+      default: false,
+    },
+    verificationCodeHash: { type: String, select: false },
+    verificationExpiresAt: { type: Date, select: false },
+    verificationAttempts: { type: Number, default: 0, select: false },
+    verificationLastSentAt: { type: Date, select: false },
+    resetCodeHash: { type: String, select: false },
+    resetExpiresAt: { type: Date, select: false },
+    resetAttempts: { type: Number, default: 0, select: false },
+    resetLastSentAt: { type: Date, select: false },
     role: {
       type: String,
       enum: ["student", "admin", "super_admin"],
@@ -55,7 +67,7 @@ const userSchema = new mongoose.Schema(
   {
     timestamps: true,
     versionKey: false,
-  }
+  },
 );
 
 userSchema.methods.isAdmin = function () {

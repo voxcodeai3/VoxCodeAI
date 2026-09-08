@@ -3,7 +3,11 @@ const Conversation = require("../models/Conversation");
 const LearnerProfile = require("../models/LearnerProfile");
 const LearningMemory = require("../models/LearningMemory");
 const User = require("../models/User");
-const { generateResponse, generateQuestion, evaluateAnswer } = require("../services/aiService");
+const {
+  generateResponse,
+  generateQuestion,
+  evaluateAnswer,
+} = require("../services/aiService");
 const { modelManager } = require("../services/modelManager");
 const {
   extractSignals,
@@ -11,7 +15,10 @@ const {
   buildLearnerContext,
   buildConversationSummary,
 } = require("../services/memoryService");
-const { buildLearningContext, contextToPrompt } = require("../services/ai/contextBuilder");
+const {
+  buildLearningContext,
+  contextToPrompt,
+} = require("../services/ai/contextBuilder");
 
 const MAX_MESSAGE_LENGTH = 4000;
 const HISTORY_WINDOW = 12;
@@ -57,13 +64,12 @@ async function chat(req, res) {
 
     let conversation = null;
     if (conversationId && mongoose.Types.ObjectId.isValid(conversationId)) {
-      conversation = await Conversation.findOne({ _id: conversationId, userId });
-    }
-    if (!conversation) {
-      conversation = await Conversation.findLatestForUser(userId);
+      conversation = await Conversation.findOne({
+        _id: conversationId,
+        userId,
+      });
     }
 
-    // Reuse the latest conversation so follow-ups keep their context.
     let wasNewConversation = false;
     if (!conversation) {
       conversation = await Conversation.create({
@@ -106,7 +112,8 @@ async function chat(req, res) {
           if (t?.stage) {
             learningMemory.currentStage = t.stage;
             const st = await Stage.findById(t.stage).lean();
-            if (st?.learningPath) learningMemory.activeLearningPath = st.learningPath;
+            if (st?.learningPath)
+              learningMemory.activeLearningPath = st.learningPath;
           }
         }
       } catch {}
@@ -127,11 +134,18 @@ async function chat(req, res) {
         question: message,
       });
       learningContext = contextToPrompt(learningContextObj);
-      console.log(`AI request: user=${userId} lesson=${learningContextObj.currentLesson?.title || "none"} stage=${learningContextObj.currentStage?.title || "none"} path=${learningContextObj.learningPath?.title || "none"} modelPending`);
+      console.log(
+        `AI request: user=${userId} lesson=${learningContextObj.currentLesson?.title || "none"} stage=${learningContextObj.currentStage?.title || "none"} path=${learningContextObj.learningPath?.title || "none"} modelPending`,
+      );
     } catch (e) {
-      console.log("Learning context build failed, continuing with base context:", e.message);
+      console.log(
+        "Learning context build failed, continuing with base context:",
+        e.message,
+      );
     }
-    const learnerContext = [learnerContextBase, learningContext].filter(Boolean).join("\n\n--- Learning Context ---\n");
+    const learnerContext = [learnerContextBase, learningContext]
+      .filter(Boolean)
+      .join("\n\n--- Learning Context ---\n");
 
     // Practice mode: generate question or evaluate code via dedicated functions.
     if (practiceMode === "generate") {
@@ -139,7 +153,13 @@ async function chat(req, res) {
         const topic = codingContext?.topic || message;
         const difficulty = codingContext?.difficulty || "medium";
         const qType = codingContext?.type || "coding";
-        const question = await generateQuestion({ topic, language, difficulty, learnerContext, type: qType });
+        const question = await generateQuestion({
+          topic,
+          language,
+          difficulty,
+          learnerContext,
+          type: qType,
+        });
         return res.json({
           message: question.question || question,
           code: null,
@@ -151,7 +171,9 @@ async function chat(req, res) {
       } catch (err) {
         console.error("Practice generate error:", err.message);
         await discardIfEmpty(conversation, wasNewConversation);
-        return res.status(502).json({ message: "Failed to generate question. Please try again." });
+        return res
+          .status(502)
+          .json({ message: "Failed to generate question. Please try again." });
       }
     }
 
@@ -176,11 +198,13 @@ async function chat(req, res) {
           language,
           practice: { action: "evaluation", evaluation },
         });
-    } catch (err) {
-      console.error("Practice evaluate error:", err.message);
-      await discardIfEmpty(conversation, wasNewConversation);
-      return res.status(502).json({ message: "Failed to evaluate answer. Please try again." });
-    }
+      } catch (err) {
+        console.error("Practice evaluate error:", err.message);
+        await discardIfEmpty(conversation, wasNewConversation);
+        return res
+          .status(502)
+          .json({ message: "Failed to evaluate answer. Please try again." });
+      }
     }
 
     // Extract learning signals from the user's message and update profile.
@@ -200,10 +224,14 @@ async function chat(req, res) {
         parts.push(`File language: ${codingContext.language}`);
       }
       if (codingContext.selectedCode) {
-        parts.push(`Selected code:\n\`\`\`\n${codingContext.selectedCode}\n\`\`\``);
+        parts.push(
+          `Selected code:\n\`\`\`\n${codingContext.selectedCode}\n\`\`\``,
+        );
       }
       if (codingContext.currentCode) {
-        parts.push(`Current file content:\n\`\`\`\n${codingContext.currentCode}\n\`\`\``);
+        parts.push(
+          `Current file content:\n\`\`\`\n${codingContext.currentCode}\n\`\`\``,
+        );
       }
       if (codingContext.projectFiles?.length) {
         parts.push(`Project files: ${codingContext.projectFiles.join(", ")}`);
@@ -240,13 +268,15 @@ async function chat(req, res) {
         await discardIfEmpty(conversation, wasNewConversation);
         return res.status(503).json({
           code: "ALL_MODELS_UNAVAILABLE",
-          message: "All AI models are temporarily unavailable. Please try again later.",
+          message:
+            "All AI models are temporarily unavailable. Please try again later.",
         });
       }
       console.error("AI generation failed:", error.message);
       await discardIfEmpty(conversation, wasNewConversation);
       return res.status(502).json({
-        message: "I had trouble reaching the AI engine. Please try again in a moment.",
+        message:
+          "I had trouble reaching the AI engine. Please try again in a moment.",
       });
     }
 
@@ -272,7 +302,8 @@ async function chat(req, res) {
 
     // Track AI usage on the user document
     try {
-      const usageField = inputMode === "voice" ? "aiUsage.voice" : "aiUsage.text";
+      const usageField =
+        inputMode === "voice" ? "aiUsage.voice" : "aiUsage.text";
       await User.findByIdAndUpdate(userId, {
         $inc: { "aiUsage.total": 1, [usageField]: 1 },
         $set: { "aiUsage.lastUsedAt": new Date(), lastUsedAt: new Date() },
@@ -294,21 +325,36 @@ async function chat(req, res) {
         await mem.save();
         // Track weak topics if question suggests struggle and current lesson exists
         // (centralized service, Step 7 — path-scoped, deduped, severity-tracked)
-        const struggleHints = ["don't understand", "confused", "not working", "error", "failed", "struggling"];
+        const struggleHints = [
+          "don't understand",
+          "confused",
+          "not working",
+          "error",
+          "failed",
+          "struggling",
+        ];
         const qLower = message.toLowerCase();
-        const isStruggle = struggleHints.some(h => qLower.includes(h));
+        const isStruggle = struggleHints.some((h) => qLower.includes(h));
         if (isStruggle && learningContextObj?.currentLesson?.title) {
           try {
-            const { recordWeakSignal } = require("../services/memoryUpdateService");
+            const {
+              recordWeakSignal,
+            } = require("../services/memoryUpdateService");
             await recordWeakSignal(userId, {
-              learningPath: learningContextObj?.learningPath?._id || learningContextObj?.learningPath?.id || mem.activeLearningPath,
+              learningPath:
+                learningContextObj?.learningPath?._id ||
+                learningContextObj?.learningPath?.id ||
+                mem.activeLearningPath,
               topicName: learningContextObj.currentLesson.title,
               reason: "Struggle detected in AI chat",
             });
           } catch {}
         }
         // Conversation summarization for long threads (fresh copy — service may have saved)
-        if (conversation.messages.length > 20 && conversation.messages.length % 10 === 0) {
+        if (
+          conversation.messages.length > 20 &&
+          conversation.messages.length % 10 === 0
+        ) {
           try {
             const summary = buildConversationSummary(conversation.messages);
             if (summary) {
@@ -325,7 +371,9 @@ async function chat(req, res) {
     } catch (e) {
       console.log("Memory update failed (non-fatal):", e.message);
     }
-    console.log(`AI response generated via model, conversation=${conversation._id}`);
+    console.log(
+      `AI response generated via model, conversation=${conversation._id}`,
+    );
 
     return res.json({
       message: result.reply,
@@ -348,7 +396,9 @@ async function chat(req, res) {
  */
 async function getConversation(req, res) {
   try {
-    const conversation = await Conversation.findLatestForUser(req.user.id).limit(1);
+    const conversation = await Conversation.findLatestForUser(
+      req.user.id,
+    ).limit(1);
     if (!conversation) {
       return res.json({ conversationId: null, messages: [] });
     }
