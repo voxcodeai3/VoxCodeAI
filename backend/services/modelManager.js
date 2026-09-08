@@ -324,8 +324,8 @@ class ModelManager {
   /** Lightweight probe — makes a minimal request to verify the model responds. */
   async _probe(m) {
     const timeout = 12000;
-    const baseUrl = m.baseUrl || "https://api.openai.com/v1";
-    const url = `${baseUrl.replace(/\/$/, "")}/chat/completions`;
+    const baseUrl = normalizeBaseUrl(m.baseUrl) || "https://api.openai.com/v1";
+    const url = `${baseUrl}/chat/completions`;
     const controller = new AbortController();
     const timer = setTimeout(() => controller.abort(), timeout);
     try {
@@ -449,6 +449,18 @@ function isRetryable(category) {
   );
 }
 
+/**
+ * Normalize a base URL to the API root.
+ * Tolerates users pasting the full endpoint (.../v1/chat/completions) or a
+ * trailing slash — callers always append "/chat/completions" themselves.
+ */
+function normalizeBaseUrl(baseUrl) {
+  return String(baseUrl || "")
+    .trim()
+    .replace(/\/+$/, "")
+    .replace(/\/chat\/completions\/?$/i, "");
+}
+
 /** Singleton instance shared across the application. */
 const modelManager = new ModelManager();
 
@@ -458,5 +470,6 @@ module.exports = {
   ERROR_CATEGORIES,
   categorizeError,
   isRetryable,
+  normalizeBaseUrl,
   SLEEP_DURATION_MS,
 };

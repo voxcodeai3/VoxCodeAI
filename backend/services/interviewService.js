@@ -9,6 +9,7 @@ const {
   modelManager,
   categorizeError,
   isRetryable,
+  normalizeBaseUrl,
 } = require("./modelManager");
 
 const REQUEST_TIMEOUT_MS = 60000;
@@ -64,7 +65,7 @@ async function callModel(model, { systemPrompt, history, message }) {
   }
 
   const res = await fetchWithTimeout(
-    `${baseUrl.replace(/\/$/, "")}/chat/completions`,
+    `${normalizeBaseUrl(baseUrl)}/chat/completions`,
     {
       method: "POST",
       headers: {
@@ -266,7 +267,7 @@ CRITICAL: The "feedback" field is what you will SAY OUT LOUD to the candidate. W
     const raw = await callAIWithFailover(INTERVIEWER_SYSTEM_PROMPT, history || [], prompt);
     const parsed = extractJson(raw);
 
-    if (!parsed || parsed.type !== "evaluation") {
+    if (!parsed || parsed.score === undefined || !parsed.result) {
       return {
         score: 5,
         result: "partially_correct",

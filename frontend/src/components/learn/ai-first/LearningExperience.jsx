@@ -25,6 +25,7 @@ export default function LearningExperience({ pathId, onSwitchPath }) {
   const [progression, setProgression] = useState(null);
   const [completing, setCompleting] = useState(false);
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [topicError, setTopicError] = useState(null);
 
   const loadData = useCallback(async () => {
     if (!pathId) return;
@@ -84,7 +85,7 @@ export default function LearningExperience({ pathId, onSwitchPath }) {
       });
       setQuizId(r.data.quiz._id);
       setView('quiz');
-    } catch {}
+    } catch (err) { console.error('Start quiz failed:', err?.response?.data?.message || err.message); }
   }, [sessionId, pathId]);
 
   const handleQuizComplete = useCallback(async (result) => {
@@ -116,7 +117,7 @@ export default function LearningExperience({ pathId, onSwitchPath }) {
         setView('teacher');
       }
       loadData();
-    } catch {}
+    } catch (err) { console.error('Complete topic failed:', err?.response?.data?.message || err.message); }
     setCompleting(false);
   }, [sessionId, pathId, completing]);
 
@@ -126,7 +127,7 @@ export default function LearningExperience({ pathId, onSwitchPath }) {
       const r = await startPractice({ pathId, topicId: position.current.id });
       storePracticeContext(r.data.exercise, { pathId, topicId: position.current.id, sessionId });
       window.location.href = '/voxcode?openCode=1';
-    } catch {}
+    } catch (err) { console.error('Start practice failed:', err?.response?.data?.message || err.message); }
   }, [pathId, position, sessionId]);
 
   const handleNextTopic = useCallback(async () => {
@@ -144,11 +145,12 @@ export default function LearningExperience({ pathId, onSwitchPath }) {
         setView('teacher');
       }
       loadData();
-    } catch {}
+    } catch (err) { console.error('Next topic failed:', err?.response?.data?.message || err.message); }
   }, [sessionId, loadData]);
 
   const handleReviewTopic = useCallback(async (topic) => {
     if (!topic?.id || !pathId) return;
+    setTopicError(null);
     try {
       const sessRes = await api.post('/learning/teaching/session/start', {
         learningPathId: pathId,
@@ -160,7 +162,10 @@ export default function LearningExperience({ pathId, onSwitchPath }) {
       setView('teacher');
       setSidebarOpen(false);
       getProgressionCheck(pathId, topic.id).then(setProgression).catch(() => {});
-    } catch {}
+    } catch (err) {
+      console.error('Topic switch failed:', err?.response?.data?.message || err.message);
+      setTopicError(err?.response?.data?.message || 'Could not open this topic. Please try again.');
+    }
   }, [pathId]);
 
   const handleTopicClick = useCallback((topic, stage) => {
@@ -234,7 +239,15 @@ export default function LearningExperience({ pathId, onSwitchPath }) {
               completedTopicIds={completedIds}
               reviewTopicIds={reviewIds}
               onTopicClick={handleTopicClick}
+              error={error}
+              onRetry={loadData}
             />
+
+            {topicError && (
+              <div className="mt-3 px-3 py-2 rounded-lg bg-rose-400/10 border border-rose-400/20 text-[11px] text-rose-300">
+                {topicError}
+              </div>
+            )}
 
             {reviewItems.length > 0 && (
               <div className="mt-4 border-t border-white/[0.06] pt-4">

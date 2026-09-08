@@ -1,13 +1,13 @@
 /**
  * Configurable TTS service abstraction.
  *
- * Supports any OpenAI-compatible TTS provider via environment variables:
- *   TTS_PROVIDER  — "openai" | "openai-compatible" | "browser" (default: "browser")
+ * Supports OpenAI-compatible TTS providers and Fish Audio via env vars:
+ *   TTS_PROVIDER  — "openai" | "openai-compatible" | "fish" | "browser" (default: "browser")
  *   TTS_API_KEY   — API key for the provider
- *   TTS_MODEL     — model name (e.g. "tts-1", "tts-1-hd")
- *   TTS_VOICE     — voice name (e.g. "alloy", "echo", "fable", "onyx", "nova", "shimmer")
- *   TTS_BASE_URL  — base URL for OpenAI-compatible providers
- *   TTS_SPEED     — speech speed (0.25–4.0, default: 1.0)
+ *   TTS_MODEL     — model name (OpenAI: "tts-1"; Fish: "s2-pro" | "s1" | "s2.1-pro" | "s2.1-pro-free")
+ *   TTS_VOICE     — voice name (OpenAI: "alloy", ...; Fish: the voice/model reference_id from the playground)
+ *   TTS_BASE_URL  — base URL (OpenAI-compatible providers; Fish default: https://api.fish.audio)
+ *   TTS_SPEED     — speech speed (OpenAI 0.25–4.0; Fish prosody 0.5–2.0, clamped; default: 1.0)
  *
  * If no provider is configured, the service returns null to signal
  * the frontend should use browser speechSynthesis as fallback.
@@ -87,8 +87,22 @@ async function generateSpeech(text, options = {}) {
 
   try {
     let result = null;
+    const baseLower = String(config.baseUrl || "").toLowerCase();
+    const isFish = config.provider === "fish" || config.provider === "fish-audio" || config.provider === "fish.audio"
+      // Tolerate a generic provider label when the URL clearly points at Fish Audio.
+      || baseLower.includes("fish.audio");
     if (config.provider === "openai" || config.provider === "openai-compatible") {
       result = await callOpenAICompatible(truncated, { ...config, voice, speed });
+    } else if (isFish) {
+      if (config.provider !== "fish" && config.provider !== "fish-audio" && config.provider !== "fish.audio") {
+        console.log(`TTS: routing provider "${config.provider}" to Fish Audio based on base URL (set TTS_PROVIDER=fish to silence this).`);
+      }
+      result = await callFishAudio(truncated, { ...config, voice, speed });
+    } else {
+      // Unknown provider name — never pretend it worked. Returning null lets
+      // the frontend fall back to browser speech (and logs why below).
+      console.error(`TTS misconfigured: unknown TTS_PROVIDER "${config.provider}". Use "openai", "openai-compatible", "fish", or "browser".`);
+      return null;
     }
     if (result?.audio) {
       cacheSet(key, result.audio);
@@ -128,6 +142,45 @@ async function callOpenAICompatible(text, config) {
 
   const buffer = Buffer.from(await response.arrayBuffer());
   return { audio: buffer, contentType: "audio/mpeg", provider: config.provider };
+}
+
+/**
+ * Fish Audio TTS API call — POST {base}/v1/tts with a voice reference_id.
+ * TTS_VOICE must be the voice/model ID from the Fish Audio playground.
+ */
+async function callFishAudio(text, config) {
+  const root = (config.baseUrl || "https://api.fish.audio").replace(/\/+$/, "");
+  const url = root.endsWith("/v1/tts") ? root : `${root}/v1/tts`;
+  // Fish prosody speed range is 0.5–2.0; clamp our generic speed into it.
+  const speed = Math.min(2.0, Math.max(0.5, Number(config.speed) || 1.0));
+  // Accept OpenRouter-style slugs ("fish-audio/s2.1-pro-free:free") by extracting the engine label.
+  const rawModel = String(config.model || "");
+  const engine = ["s2.1-pro-free", "s2.1-pro", "s2-pro", "s1"].find((m) => rawModel.toLowerCase().includes(m)) || "s2-pro";
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${config.apiKey}`,
+      "Content-Type": "application/json",
+      model: engine,
+    },
+    body: JSON.stringify({
+      text,
+      reference_id: config.voice,
+      format: "mp3",
+      normalize: true,
+      prosody: { speed },
+    }),
+  });
+
+  if (!response.ok) {
+    const body = await response.text().catch(() => "");
+    throw new Error(`Fish Audio API error ${response.status}: ${body.slice(0, 200)}`);
+  }
+
+  const buffer = Buffer.from(await response.arrayBuffer());
+  if (buffer.length === 0) throw new Error("Fish Audio returned empty audio");
+  return { audio: buffer, contentType: "audio/mpeg", provider: "fish" };
 }
 
 /**

@@ -13,7 +13,7 @@ function QuestionCard({ q, value, onChange }) {
         {q.code && <pre className="bg-black/30 border border-white/[0.06] rounded-lg p-3 text-xs text-cyan-300 overflow-x-auto whitespace-pre-wrap">{q.code}</pre>}
         <div className="space-y-1.5 mt-3">
           {q.options.map((opt, idx) => (
-            <label key={idx} className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm cursor-pointer transition-colors ${value === opt ? 'bg-cyan-500/15 border-cyan-400/30 text-cyan-200' : 'bg-white/[0.04] border-white/[0.08] text-white/70 hover:border-white/15'}`}>
+            <label key={`${q.id}-${idx}`} className={`flex items-center gap-2 rounded-lg border px-3 py-2 text-sm cursor-pointer transition-colors ${value === opt ? 'bg-cyan-500/15 border-cyan-400/30 text-cyan-200' : 'bg-white/[0.04] border-white/[0.08] text-white/70 hover:border-white/15'}`}>
               <input type="radio" name={q.id} value={opt} checked={value === opt} onChange={(e) => onChange(e.target.value)} className="accent-cyan-500" />
               <span>{opt}</span>
             </label>

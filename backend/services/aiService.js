@@ -11,6 +11,7 @@ const {
   modelManager,
   categorizeError,
   isRetryable,
+  normalizeBaseUrl,
 } = require("./modelManager");
 
 const DEFAULT_MODELS = {
@@ -167,7 +168,7 @@ async function callOpenAICompatible(
 ) {
   const modelName = model.name || DEFAULT_MODELS.compatible;
   const res = await fetchWithTimeout(
-    `${baseUrl.replace(/\/$/, "")}/chat/completions`,
+    `${normalizeBaseUrl(baseUrl)}/chat/completions`,
     {
       method: "POST",
       headers: {

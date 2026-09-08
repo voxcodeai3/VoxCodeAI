@@ -21,7 +21,17 @@ const STATUS_LABEL = {
   review: 'Needs Review',
 };
 
-export default function Roadmap({ roadmap, summary, currentTopicId, completedTopicIds, reviewTopicIds, onTopicClick }) {
+export default function Roadmap({ roadmap, summary, currentTopicId, completedTopicIds, reviewTopicIds, onTopicClick, error, onRetry }) {
+  if (error) {
+    return (
+      <div className="text-xs text-white/40 p-4">
+        <div className="mb-2">{error}</div>
+        {onRetry && (
+          <button onClick={onRetry} className="text-cyan-400 hover:underline">Retry</button>
+        )}
+      </div>
+    );
+  }
   if (!roadmap?.stages?.length) {
     return (
       <div className="text-xs text-white/40 p-4">No roadmap data available.</div>

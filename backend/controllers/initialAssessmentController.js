@@ -243,11 +243,11 @@ exports.completeAssessment = async (req, res) => {
 
 function sanitizeForStudent(a) {
   const obj = a.toObject ? a.toObject() : a;
-  // Hide correct answers until completed, but keep expectedAnswer hidden for active
+  // Hide correct answers AND explanations until completed; explanation reveals the answer
   const isCompleted = obj.status === "completed";
   const questions = (obj.questions || []).map((q) => {
-    const { expectedAnswer, ...rest } = q;
-    // For active, don't expose expectedAnswer; for completed, expose for review
+    const { expectedAnswer, explanation, ...rest } = q;
+    // For active, don't expose expectedAnswer/explanation; for completed, expose for review
     return isCompleted ? q : rest;
   });
   return { ...obj, questions };

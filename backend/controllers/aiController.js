@@ -16,6 +16,17 @@ const { buildLearningContext, contextToPrompt } = require("../services/ai/contex
 const MAX_MESSAGE_LENGTH = 4000;
 const HISTORY_WINDOW = 12;
 
+// Remove a conversation row that was just created but never received any
+// messages (failed AI call). Otherwise empty shells pile up in history and
+// get re-selected as the "latest" conversation.
+async function discardIfEmpty(conversation, wasNew) {
+  try {
+    if (wasNew && conversation && (conversation.messages || []).length === 0) {
+      await Conversation.findByIdAndDelete(conversation._id);
+    }
+  } catch {}
+}
+
 /**
  * POST /api/ai/chat
  * Body: { message, conversationId?, inputMode?, language?, level?, teachingMode? }
@@ -53,6 +64,7 @@ async function chat(req, res) {
     }
 
     // Reuse the latest conversation so follow-ups keep their context.
+    let wasNewConversation = false;
     if (!conversation) {
       conversation = await Conversation.create({
         userId,
@@ -61,6 +73,7 @@ async function chat(req, res) {
         teachingMode,
         title: Conversation.generateTitle(message),
       });
+      wasNewConversation = true;
     } else {
       conversation.language = language || conversation.language;
       conversation.level = level || conversation.level;
@@ -137,6 +150,7 @@ async function chat(req, res) {
         });
       } catch (err) {
         console.error("Practice generate error:", err.message);
+        await discardIfEmpty(conversation, wasNewConversation);
         return res.status(502).json({ message: "Failed to generate question. Please try again." });
       }
     }
@@ -162,10 +176,11 @@ async function chat(req, res) {
           language,
           practice: { action: "evaluation", evaluation },
         });
-      } catch (err) {
-        console.error("Practice evaluate error:", err.message);
-        return res.status(502).json({ message: "Failed to evaluate answer. Please try again." });
-      }
+    } catch (err) {
+      console.error("Practice evaluate error:", err.message);
+      await discardIfEmpty(conversation, wasNewConversation);
+      return res.status(502).json({ message: "Failed to evaluate answer. Please try again." });
+    }
     }
 
     // Extract learning signals from the user's message and update profile.
@@ -214,6 +229,7 @@ async function chat(req, res) {
       });
     } catch (error) {
       if (error.code === "AI_NOT_CONFIGURED") {
+        await discardIfEmpty(conversation, wasNewConversation);
         return res.status(503).json({
           code: "AI_NOT_CONFIGURED",
           message:
@@ -221,12 +237,14 @@ async function chat(req, res) {
         });
       }
       if (error.code === "ALL_MODELS_UNAVAILABLE") {
+        await discardIfEmpty(conversation, wasNewConversation);
         return res.status(503).json({
           code: "ALL_MODELS_UNAVAILABLE",
           message: "All AI models are temporarily unavailable. Please try again later.",
         });
       }
       console.error("AI generation failed:", error.message);
+      await discardIfEmpty(conversation, wasNewConversation);
       return res.status(502).json({
         message: "I had trouble reaching the AI engine. Please try again in a moment.",
       });

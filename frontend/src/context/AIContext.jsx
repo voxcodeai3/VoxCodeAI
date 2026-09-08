@@ -143,6 +143,10 @@ export function AIProvider({ children }) {
 
   const pendingRetryRef = useRef(null);
   const syncingRef = useRef(false);
+  // True once the user has sent a message this session. Prevents the
+  // "no active conversation" effect below from wiping optimistic user
+  // messages and error bubbles while no server conversation exists yet.
+  const interactedRef = useRef(false);
 
   const setPreference = useCallback((pref) => {
     setPreferenceState(pref);
@@ -163,6 +167,7 @@ export function AIProvider({ children }) {
     setResponseMode(null);
     pendingRetryRef.current = null;
     syncingRef.current = false;
+    interactedRef.current = false;
     setSettings({ language: 'javascript', level: 'beginner', teachingMode: 'learn' });
     setMessages(GREETING());
   }, [isAuthenticated, voice]);
@@ -171,19 +176,24 @@ export function AIProvider({ children }) {
   useEffect(() => {
     if (!activeConversation) {
       // No active conversation — show greeting (but only if we're not in the middle of something).
-      // Also skip if we just synced after a chat (syncingRef prevents race condition).
-      if (!isThinking && !syncingRef.current) setMessages(GREETING());
+      // Also skip if we just synced after a chat (syncingRef prevents race condition),
+      // and skip if the user already sent messages this session (interactedRef prevents
+      // wiping optimistic/error messages before any server conversation exists).
+      if (!isThinking && !syncingRef.current && !interactedRef.current) setMessages(GREETING());
       return;
     }
     const serverMessages = activeConversation.messages || [];
     if (serverMessages.length === 0) {
-      setMessages(GREETING());
+      // An empty conversation (e.g. a row left behind by a failed send, or a
+      // freshly opened history item) must NOT wipe messages the user just sent.
+      if (!interactedRef.current) setMessages(GREETING());
       return;
     }
     setMessages([
       ...GREETING(),
       ...serverMessagesToFrontend(serverMessages),
     ]);
+    interactedRef.current = false;
     setSettings((s) => ({
       ...s,
       language: activeConversation.language || s.language,
@@ -291,6 +301,7 @@ export function AIProvider({ children }) {
           source: inputMode,
         },
       ]);
+      interactedRef.current = true;
       pendingRetryRef.current = null;
       runChat({ text, inputMode, overrides });
     },
@@ -360,6 +371,7 @@ export function AIProvider({ children }) {
     setHasFailedAttempt(false);
     setActiveAction(null);
     pendingRetryRef.current = null;
+    interactedRef.current = false;
     setSettings({ language: 'javascript', level: 'beginner', teachingMode: 'learn' });
     newConversation();
   }, [voice, newConversation]);
@@ -376,6 +388,7 @@ export function AIProvider({ children }) {
     setHasFailedAttempt(false);
     setActiveAction(null);
     pendingRetryRef.current = null;
+    interactedRef.current = false;
     setSettings({ language: 'javascript', level: 'beginner', teachingMode: 'learn' });
     setMessages(GREETING());
     resetConversations();

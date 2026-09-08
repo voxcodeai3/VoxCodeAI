@@ -17,7 +17,7 @@ function sanitizeQuiz(quiz, includeAnswers = false) {
   const obj = quiz.toObject ? quiz.toObject() : quiz;
   const questions = (obj.questions || []).map((q) => {
     if (includeAnswers) return q;
-    const { expectedAnswer, ...rest } = q;
+    const { expectedAnswer, explanation, ...rest } = q;
     return rest;
   });
   return { ...obj, questions };

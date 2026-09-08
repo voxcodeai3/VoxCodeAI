@@ -117,7 +117,7 @@ exports.submitAnswer = async (attemptId, questionId, answer, timeSpentSeconds = 
   }
 
   updateDifficulty(attempt, result.correct);
-  updateSkillResults(attempt, question.skill, result.correct, question.difficulty);
+  updateSkillResults(attempt, question.skill, result.correct, question.difficulty, assessment);
 
   await attempt.save();
 
@@ -179,7 +179,7 @@ exports.getAttemptResult = async (attemptId, userId) => {
 exports.getPlacement = async (userId, skill) => {
   const assessment = await Assessment.findOne({ type: "placement", skill, status: "published" });
   if (!assessment) {
-    return this.createPlacementAssessment(skill);
+    return exports.createPlacementAssessment(skill);
   }
   return assessment;
 };
@@ -353,7 +353,7 @@ function updateDifficulty(attempt, correct) {
   }
 }
 
-function updateSkillResults(attempt, skill, correct, difficulty) {
+function updateSkillResults(attempt, skill, correct, difficulty, assessment) {
   let sr = attempt.skillResults.find((s) => s.skill === skill);
   if (!sr) {
     sr = { skill, questionsAnswered: 0, correct: 0, score: 0, confidence: 0, status: "not_started" };
@@ -369,8 +369,6 @@ function updateSkillResults(attempt, skill, correct, difficulty) {
     if (correct) sr.difficultyBreakdown[difficulty].correct += 1;
   }
 
-  const nextSkillIdx = attempt.skillResults.indexOf(sr) + 1;
-  const assessment = attempt._assessment;
   if (assessment?.skills?.length > 0) {
     const currentIdx = assessment.skills.indexOf(skill);
     if (currentIdx >= 0 && currentIdx < assessment.skills.length - 1) {

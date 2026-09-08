@@ -566,6 +566,15 @@ router.delete("/users/:id", requirePermission("deleteUsers"), async (req, res) =
     // Remove associated learning data
     await Promise.all([
       LearningMemory.deleteOne({ user: id }),
+      require("../models/Conversation").deleteMany({ user: id }),
+      require("../models/LearningProgress").deleteMany({ user: id }),
+      require("../models/LearningSession").deleteMany({ user: id }),
+      require("../models/InterviewSession").deleteMany({ user: id }),
+      require("../models/AssessmentAttempt").deleteMany({ user: id }),
+      require("../models/UserSkill").deleteMany({ user: id }),
+      require("../models/LearningAnalytics").deleteMany({ user: id }),
+      require("../models/Project").deleteMany({ user: id }),
+      require("../models/ProjectVersion").deleteMany({ user: id }),
     ]);
 
     // Delete the user

@@ -226,7 +226,7 @@ export function VoiceProvider({ children }) {
       return;
     }
 
-    tts.stop(); // never let speech synthesis overlap a listening session
+    browserTts.stop(); // never let speech synthesis overlap a listening session
     setSpokenMessageId(null);
     setTranscript('');
     setErrorMessage('');

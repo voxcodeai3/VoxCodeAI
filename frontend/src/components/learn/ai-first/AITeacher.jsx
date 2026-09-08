@@ -12,10 +12,15 @@ export default function AITeacher({ sessionId, session, onStateChange, onMessage
   const voice = useVoice();
   const sendingRef = useRef(false);
   sendingRef.current = sending;
+  // Message ids already read aloud. The auto-speak effect below must fire
+  // at most once per message — without this, every VoiceProvider re-render
+  // (including the speaking→idle transition when speech ENDS) re-triggers
+  // the effect and the same message repeats forever.
+  const spokenRef = useRef(new Set());
 
   const scrollToBottom = useCallback(() => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' }), [];
-  });
+    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+  }, []);
 
   useEffect(scrollToBottom, [messages, scrollToBottom]);
 
@@ -31,20 +36,22 @@ export default function AITeacher({ sessionId, session, onStateChange, onMessage
     }
   }, [session]);
 
+  const { voiceEnabled, speakResponse } = voice;
   const speakIfEnabled = useCallback((text, messageId) => {
-    if (voice.voiceEnabled && text) {
-      voice.speakResponse(text, messageId);
+    if (voiceEnabled && text) {
+      speakResponse(text, messageId);
     }
-  }, [voice]);
+  }, [voiceEnabled, speakResponse]);
 
   useEffect(() => {
-    if (messages.length > 0) {
+    if (messages.length > 0 && voiceEnabled) {
       const last = messages[messages.length - 1];
-      if (last.role === 'assistant' && last.id !== 'welcome' && !last.isError) {
+      if (last.role === 'assistant' && last.id !== 'welcome' && !last.isError && !spokenRef.current.has(last.id)) {
+        spokenRef.current.add(last.id);
         speakIfEnabled(last.content, last.id);
       }
     }
-  }, [messages, speakIfEnabled]);
+  }, [messages, speakIfEnabled, voiceEnabled]);
 
   const sendMessage = useCallback(async (text) => {
     const msg = (text || '').trim();

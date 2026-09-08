@@ -12,6 +12,7 @@ const miniQuizQuestionSchema = new mongoose.Schema(
     options: { type: [String], default: [] },
     code: { type: String, default: null },
     expectedAnswer: { type: String, default: null },
+    explanation: { type: String, default: null },
     topic: { type: String, default: null },
     topicId: { type: mongoose.Schema.Types.ObjectId, ref: "Topic" },
     technology: { type: String, default: null },

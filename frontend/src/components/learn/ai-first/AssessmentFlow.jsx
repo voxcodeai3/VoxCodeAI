@@ -112,7 +112,7 @@ export default function AssessmentFlow({ pathId, onComplete }) {
         <div className="space-y-2 mb-4">
           {q.options.map((opt, i) => (
             <button
-              key={i}
+              key={`${q.id}-${i}`}
               onClick={() => handleAnswer(opt)}
               className={`w-full text-left px-3 py-3 rounded-lg border text-sm transition-colors min-h-[44px] ${
                 answers[q.id] === opt
