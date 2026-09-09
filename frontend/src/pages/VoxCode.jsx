@@ -501,8 +501,9 @@ export default function VoxCode() {
 
       {!isWorkspaceOpen && <TextConsole />}
 
-      {/* Bottom-left buttons */}
-      <div className="absolute bottom-3 left-3 z-30 flex items-center gap-1.5 sm:bottom-4 sm:left-4 sm:gap-2">
+      {/* Bottom-left buttons — hidden on small screens (they live in the
+          history menu's Navigate dropdown there instead) */}
+      <div className="absolute bottom-3 left-3 z-30 hidden items-center gap-1.5 sm:bottom-4 sm:left-4 sm:gap-2 sm:flex">
         <button
           type="button"
           onClick={() => navigate("/learn")}
@@ -547,6 +548,12 @@ export default function VoxCode() {
         onClose={() => setIsHistoryOpen(false)}
         onSelectConversation={() => {}}
         onSelectInterview={(interview) => viewInterview(interview.id)}
+        navItems={[
+          { icon: BookOpen, label: "LEARN", onClick: () => navigate("/learn") },
+          { icon: Code2, label: "CODE", onClick: () => setIsWorkspaceOpen(true) },
+          { icon: BarChart3, label: "PROGRESS", onClick: () => navigate("/learning") },
+          { icon: LayoutDashboard, label: "DASHBOARD", onClick: () => navigate("/home") },
+        ]}
       />
     </div>
   );
