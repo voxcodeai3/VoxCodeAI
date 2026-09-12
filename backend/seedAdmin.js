@@ -1,16 +1,19 @@
 /**
- * seedAdmin.js — One-time script to create a super_admin account.
+ * seedAdmin.js — Creates the initial super_admin account from .env credentials.
  *
  * Usage:
  *   node backend/seedAdmin.js
- *   node backend/seedAdmin.js --email admin@voxcode.com --password mypassword123
  *
- * Defaults:
- *   email:    admin@voxcode.com
- *   password: admin123
- *   name:     Super Admin
+ * Required environment variables:
+ *   SUPER_ADMIN_EMAIL     — real email address for the admin
+ *   SUPER_ADMIN_PASSWORD  — strong password (min 8 characters)
+ *   SUPER_ADMIN_NAME      — display name (optional, defaults to "VoxCode Super Admin")
  *
- * Only runs if no super_admin exists yet.
+ * Behaviour:
+ *   - Fails immediately if required credentials are missing.
+ *   - If a super_admin already exists, does nothing (no duplicates).
+ *   - Sets emailVerified = true so the admin can log in without OTP.
+ *   - Hashes the password with bcryptjs before storing.
  */
 
 require("dotenv").config();
@@ -20,22 +23,31 @@ const User = require("./models/User");
 
 const MONGO_URI = process.env.MONGO_URI;
 if (!MONGO_URI) {
-  console.error("MONGO_URI not found in environment. Make sure .env is configured.");
+  console.error("Error: MONGO_URI not found. Configure backend/.env.");
   process.exit(1);
 }
 
-function getArg(flag) {
-  const idx = process.argv.indexOf(flag);
-  if (idx !== -1 && process.argv[idx + 1]) return process.argv[idx + 1];
-  return null;
+const email = process.env.SUPER_ADMIN_EMAIL;
+const password = process.env.SUPER_ADMIN_PASSWORD;
+const name = process.env.SUPER_ADMIN_NAME || "VoxCode Super Admin";
+
+if (!email) {
+  console.error("Error: SUPER_ADMIN_EMAIL is not set in .env.");
+  process.exit(1);
+}
+if (!password) {
+  console.error("Error: SUPER_ADMIN_PASSWORD is not set in .env.");
+  process.exit(1);
+}
+if (password.length < 8) {
+  console.error("Error: SUPER_ADMIN_PASSWORD must be at least 8 characters.");
+  process.exit(1);
 }
 
-async function seed() {
-  const email = getArg("--email") || "admin@voxcode.com";
-  const password = getArg("--password") || "admin123";
-  const name = getArg("--name") || "Super Admin";
+const normalizedEmail = email.trim().toLowerCase();
 
-  console.log(`Connecting to MongoDB...`);
+async function seed() {
+  console.log("Connecting to MongoDB...");
   await mongoose.connect(MONGO_URI);
   console.log("Connected.\n");
 
@@ -50,9 +62,10 @@ async function seed() {
   const hashedPassword = await bcrypt.hash(password, 10);
 
   const admin = await User.create({
-    name,
-    email,
+    name: name.trim(),
+    email: normalizedEmail,
     password: hashedPassword,
+    emailVerified: true,
     role: "super_admin",
     adminPermissions: {
       viewUsers: true,
