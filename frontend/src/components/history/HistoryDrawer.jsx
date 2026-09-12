@@ -7,6 +7,8 @@ import {
   Mic,
   Trophy,
   Trash2,
+  ChevronDown,
+  Compass,
 } from "lucide-react";
 import { useConversations } from "../../context/ConversationContext";
 import { useInterview } from "../../context/InterviewContext";
@@ -61,6 +63,7 @@ function HistoryDrawer({
   onClose,
   onSelectConversation,
   onSelectInterview,
+  navItems = [],
 }) {
   const {
     conversations,
@@ -76,6 +79,7 @@ function HistoryDrawer({
   const [pendingDeleteInterview, setPendingDeleteInterview] = useState(null);
   const [interviews, setInterviews] = useState([]);
   const [loadingInterviews, setLoadingInterviews] = useState(false);
+  const [navOpen, setNavOpen] = useState(false);
   const { deleteInterview } = useInterview();
 
   // Load interview history.
@@ -191,6 +195,50 @@ function HistoryDrawer({
             <span>New Conversation</span>
           </button>
         </div>
+
+        {/* Navigate dropdown — small screens only. The bottom nav pills are
+            hidden below the sm breakpoint, so they live here as a collapsible
+            section instead. History UI below is unchanged. */}
+        {navItems.length > 0 && (
+          <div className="px-4 pb-2 sm:hidden">
+            <button
+              type="button"
+              onClick={() => setNavOpen((v) => !v)}
+              aria-expanded={navOpen}
+              className="w-full flex items-center gap-2.5 rounded-xl border border-white/[0.06] bg-white/[0.02] px-4 py-2.5 text-sm text-white/60 hover:bg-white/[0.04] transition-all duration-200"
+            >
+              <Compass className="h-4 w-4 text-cyan-400/60" />
+              <span className="flex-1 text-left text-[11px] font-medium uppercase tracking-widest">
+                Navigate
+              </span>
+              <ChevronDown
+                className={`h-4 w-4 text-white/30 transition-transform ${navOpen ? "rotate-180" : ""}`}
+              />
+            </button>
+            {navOpen && (
+              <div className="mt-1.5 space-y-1 rounded-xl border border-white/[0.04] bg-black/20 p-1.5">
+                {navItems.map((item) => {
+                  const Icon = item.icon;
+                  return (
+                    <button
+                      key={item.label}
+                      type="button"
+                      onClick={() => {
+                        setNavOpen(false);
+                        onClose();
+                        item.onClick();
+                      }}
+                      className="w-full flex items-center gap-2.5 rounded-lg px-3 py-2.5 text-left text-xs text-white/70 hover:bg-white/[0.05] hover:text-white transition-colors min-h-[44px]"
+                    >
+                      {Icon && <Icon className="h-3.5 w-3.5 text-cyan-400/60 shrink-0" />}
+                      <span className="tracking-wider">{item.label}</span>
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Conversation list */}
         <div className="flex-1 overflow-y-auto px-4 pb-4 pt-2">
