@@ -6,6 +6,7 @@ import { useAuth } from '../context/AuthContext';
 import { useProject } from '../context/ProjectContext';
 import api from '../services/api';
 import learningMemoryApi from '../services/learningMemoryApi';
+import { getExercise, startPractice, storePracticeContext } from '../services/practiceApi';
 
 const ContentBlock = ({ block }) => {
   if (!block) return null;
@@ -170,7 +171,6 @@ export default function LessonViewer() {
       await learningMemoryApi.saveExercise({ lessonId: currentLesson?._id || lessonId, topic: currentLesson?.title, passed: false });
     } catch {}
     try {
-      const { getExercise, startPractice, storePracticeContext } = await import('../services/practiceApi');
       const state = await api.get('/learning/state').then((r) => r.data).catch(() => null);
       const topicId = state?.currentTopic?._id || state?.currentTopic || null;
       const pathId = state?.activeLearningPath?._id || state?.activeLearningPath || state?.activeLearningGoal?.learningPath?._id || state?.activeLearningGoal?.learningPath || null;

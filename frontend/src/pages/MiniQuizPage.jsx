@@ -3,6 +3,7 @@ import { useParams, useNavigate, useSearchParams } from 'react-router-dom';
 import { Loader2, CheckCircle, XCircle, AlertTriangle, Lightbulb, ArrowRight, RotateCcw, BookOpen } from 'lucide-react';
 import * as quizApi from '../services/miniQuizApi';
 import api from '../services/api';
+import { startPractice, storePracticeContext, getExercise } from '../services/practiceApi';
 
 function QuestionView({ q, value, onChange, disabled }) {
   const isMC = q.type === 'multiple_choice' || q.type === 'true_false';
@@ -202,7 +203,6 @@ export default function MiniQuizPage() {
               <button
                 onClick={async () => {
                   try {
-                    const { startPractice, storePracticeContext, getExercise } = await import('../services/practiceApi');
                     const pathId = quiz?.learningPath;
                     const topicId = quiz?.topic;
                     if (pathId && topicId) {
