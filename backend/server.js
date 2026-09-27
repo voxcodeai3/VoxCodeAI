@@ -126,18 +126,41 @@ app.use((err, req, res, next) => {
 
 const PORT = process.env.PORT || 5000;
 const MONGO_URI = process.env.MONGO_URI;
+const MONGO_RETRY_MS = 10000;
 
-async function startServer() {
+// Root health endpoint for hosting platforms (Render port detection / health checks).
+app.get("/", (req, res) => {
+  const states = ["disconnected", "connected", "connecting", "disconnecting"];
+  res.json({
+    status: "ok",
+    service: "VoxCode backend",
+    db: states[mongoose.connection.readyState] || "unknown",
+  });
+});
+
+async function connectWithRetry() {
+  if (!MONGO_URI) {
+    console.error("MONGO_URI is not set. Set it in the hosting dashboard environment variables.");
+    setTimeout(connectWithRetry, MONGO_RETRY_MS);
+    return;
+  }
   try {
     await mongoose.connect(MONGO_URI);
     console.log("MongoDB connected successfully");
-    app.listen(PORT, () => {
-      console.log(`VoxCode backend running on http://localhost:${PORT}`);
-    });
   } catch (error) {
     console.error("MongoDB connection failed:", error.message);
-    process.exit(1);
+    console.error(`Retrying in ${MONGO_RETRY_MS / 1000}s...`);
+    setTimeout(connectWithRetry, MONGO_RETRY_MS);
   }
+}
+
+async function startServer() {
+  // Bind the port FIRST so hosting platforms (Render, etc.) detect the
+  // service even while the database is still connecting or retrying.
+  app.listen(PORT, () => {
+    console.log(`VoxCode backend running on port ${PORT}`);
+  });
+  await connectWithRetry();
 }
 
 startServer();
