@@ -119,8 +119,25 @@ async function seed() {
     await Technology.deleteMany({});
     await Stack.deleteMany({});
 
-    const techResult = await Technology.insertMany(TECHNOLOGIES);
+    // Insert technologies WITHOUT prerequisites first (schema requires
+    // ObjectIds, but seed data declares them as slugs — same two-pass
+    // pattern as seedProgrammingLanguages.js).
+    const techDocs = TECHNOLOGIES.map(({ prerequisites, ...rest }) => rest);
+    const techResult = await Technology.insertMany(techDocs);
     console.log(`Created ${techResult.length} technologies`);
+
+    // Second pass: resolve prerequisite slugs to ObjectIds.
+    const bySlug = {};
+    for (const t of techResult) bySlug[t.slug] = t;
+    let linked = 0;
+    for (const t of TECHNOLOGIES) {
+      if (t.prerequisites?.length) {
+        const ids = t.prerequisites.map((s) => bySlug[s]?._id).filter(Boolean);
+        await Technology.updateOne({ slug: t.slug }, { $set: { prerequisites: ids } });
+        linked++;
+      }
+    }
+    console.log(`Linked prerequisites for ${linked} technologies`);
 
     const stackResult = await Stack.insertMany(STACKS);
     console.log(`Created ${stackResult.length} stacks`);
