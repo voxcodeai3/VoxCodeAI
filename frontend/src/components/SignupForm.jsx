@@ -133,9 +133,18 @@ function SignupForm() {
       setResendCooldown(60);
     } catch (error) {
       setLoading(false);
-      const message =
-        error.response?.data?.message ||
-        "Unable to create your account right now. Please try again.";
+      console.error("Signup error:", error);
+      
+      let message = "Unable to create your account right now. Please try again.";
+      
+      if (error.response?.data?.message) {
+        message = error.response.data.message;
+      } else if (error.message === "Network Error") {
+        message = "Network Error: Could not connect to the server. Please check if the backend is running.";
+      } else if (error.message) {
+        message = `Error: ${error.message}`;
+      }
+
       if (message.toLowerCase().includes("email")) {
         setErrors((err) => ({ ...err, email: message }));
       } else {
