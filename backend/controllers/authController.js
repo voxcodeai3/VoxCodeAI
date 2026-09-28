@@ -137,7 +137,17 @@ async function register(req, res) {
       verificationLastSentAt: new Date(),
     });
 
-    await emailService.sendVerificationEmail(email, verificationCode);
+    // Log the verification code to the console for development/testing
+    // in case the email service is unconfigured.
+    console.log(`\n======================================================`);
+    console.log(`[OTP] Verification Code for ${email}: ${verificationCode}`);
+    console.log(`======================================================\n`);
+
+    // Send verification email in the background to prevent hanging the API response
+    // if the email server is slow or unresponsive.
+    emailService.sendVerificationEmail(email, verificationCode).catch(err => {
+      console.error("Background email send error:", err);
+    });
 
     return res.status(201).json({
       message: "Account created successfully. Please verify your email.",
@@ -313,7 +323,13 @@ async function resendVerification(req, res) {
     user.verificationLastSentAt = new Date();
     await user.save();
 
-    await emailService.sendVerificationEmail(user.email, verificationCode);
+    console.log(`\n======================================================`);
+    console.log(`[OTP] Resent Verification Code for ${user.email}: ${verificationCode}`);
+    console.log(`======================================================\n`);
+
+    emailService.sendVerificationEmail(user.email, verificationCode).catch(err => {
+      console.error("Background email send error:", err);
+    });
     return res.json({ message: "A new verification code has been sent." });
   } catch (error) {
     console.error("resendVerification error:", error);
@@ -348,7 +364,13 @@ async function forgotPassword(req, res) {
     user.resetLastSentAt = new Date();
     await user.save();
 
-    await emailService.sendPasswordResetEmail(user.email, resetCode);
+    console.log(`\n======================================================`);
+    console.log(`[OTP] Password Reset Code for ${user.email}: ${resetCode}`);
+    console.log(`======================================================\n`);
+
+    emailService.sendPasswordResetEmail(user.email, resetCode).catch(err => {
+      console.error("Background email send error:", err);
+    });
     return res.json({
       message:
         "If this email is registered, a password reset code has been sent.",
