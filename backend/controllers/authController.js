@@ -3,10 +3,13 @@ const jwt = require("jsonwebtoken");
 const { OAuth2Client } = require("google-auth-library");
 const crypto = require("crypto");
 const User = require("../models/User");
+const PendingRegistration = require("../models/PendingRegistration");
 const PlatformSettings = require("../models/PlatformSettings");
 const emailService = require("../services/emailService");
 
 const EMAIL_REGEX = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const CODE_TTL_MS = 10 * 60 * 1000; // verification code lifetime
+const PENDING_TTL_MS = 24 * 60 * 60 * 1000; // how long an unverified signup lives
 
 function getGoogleClient() {
   return new OAuth2Client(
@@ -120,22 +123,48 @@ async function register(req, res) {
         .json({ message: "An account with this email already exists" });
     }
 
+    // The account is only created after the OTP is confirmed, so a signup
+    // lives in PendingRegistration (never in the users collection) until then.
     const hashedPassword = await bcrypt.hash(password, 10);
     const verificationCode = generateSecureCode();
     const verificationCodeHash = await hashString(verificationCode);
-    const verificationExpiresAt = new Date(Date.now() + 10 * 60 * 1000); // 10 mins
+    const now = Date.now();
+    const verificationExpiresAt = new Date(now + CODE_TTL_MS);
+    const expiresAt = new Date(now + PENDING_TTL_MS);
 
-    const user = await User.create({
-      name,
-      email,
-      password: hashedPassword,
-      authProvider: "local",
-      role: "student",
-      emailVerified: false,
-      verificationCodeHash,
-      verificationExpiresAt,
-      verificationLastSentAt: new Date(),
-    });
+    const pending = await PendingRegistration.findOne({ email }).select(
+      "+verificationLastSentAt",
+    );
+
+    if (pending) {
+      if (
+        pending.verificationLastSentAt &&
+        now - pending.verificationLastSentAt < 60000
+      ) {
+        return res.status(429).json({
+          message:
+            "A verification code was already sent to this email. Please check your inbox, or wait 60 seconds before requesting a new one.",
+        });
+      }
+      pending.name = name;
+      pending.password = hashedPassword;
+      pending.verificationCodeHash = verificationCodeHash;
+      pending.verificationExpiresAt = verificationExpiresAt;
+      pending.verificationAttempts = 0;
+      pending.verificationLastSentAt = new Date(now);
+      pending.expiresAt = expiresAt;
+      await pending.save();
+    } else {
+      await PendingRegistration.create({
+        name,
+        email,
+        password: hashedPassword,
+        verificationCodeHash,
+        verificationExpiresAt,
+        verificationLastSentAt: new Date(now),
+        expiresAt,
+      });
+    }
 
     // Log the verification code to the console for development/testing
     // in case the email service is unconfigured.
@@ -150,14 +179,17 @@ async function register(req, res) {
     });
 
     return res.status(201).json({
-      message: "Account created successfully. Please verify your email.",
-      user: publicUser(user),
+      message:
+        "Verification code sent. Enter it to finish creating your account.",
     });
   } catch (error) {
     if (error && error.code === 11000) {
-      return res
-        .status(409)
-        .json({ message: "An account with this email already exists" });
+      const pendingRace = (error.message || "").includes("pendingregistration");
+      return res.status(409).json({
+        message: pendingRace
+          ? "A verification code was already sent to this email."
+          : "An account with this email already exists",
+      });
     }
     console.error("Register error:", error);
     return res
@@ -181,6 +213,23 @@ async function login(req, res) {
   try {
     const user = await User.findOne({ email }).select("+password");
     if (!user) {
+      // Not registered yet: an unverified signup only exists as a pending
+      // record. Confirm the password, then send them to verification.
+      const pending = await PendingRegistration.findOne({ email }).select(
+        "+password",
+      );
+      if (pending) {
+        const pendingPasswordMatches = await bcrypt.compare(
+          password,
+          pending.password,
+        );
+        if (pendingPasswordMatches) {
+          return res.status(403).json({
+            code: "EMAIL_UNVERIFIED",
+            message: "Please verify your email before signing in.",
+          });
+        }
+      }
       return res.status(401).json({ message: "Invalid email or password." });
     }
 
@@ -236,6 +285,68 @@ async function verifyEmail(req, res) {
     return res.status(400).json({ message: "Email and code are required." });
 
   try {
+    const pending = await PendingRegistration.findOne({ email }).select(
+      "+password +verificationCodeHash +verificationExpiresAt +verificationAttempts",
+    );
+
+    if (pending) {
+      if (pending.verificationAttempts >= 5) {
+        return res
+          .status(429)
+          .json({
+            message: "Too many failed attempts. Please request a new code.",
+          });
+      }
+
+      if (new Date() > pending.verificationExpiresAt) {
+        return res
+          .status(400)
+          .json({
+            message: "Verification code has expired. Please request a new one.",
+          });
+      }
+
+      const pendingCodeValid = await bcrypt.compare(
+        code,
+        pending.verificationCodeHash,
+      );
+      if (!pendingCodeValid) {
+        pending.verificationAttempts += 1;
+        await pending.save();
+        return res.status(400).json({ message: "Invalid verification code." });
+      }
+
+      // Code is good: this is the moment the real account comes into
+      // existence. Everything before it stayed in PendingRegistration.
+      let user;
+      try {
+        user = await User.create({
+          name: pending.name,
+          email: pending.email,
+          password: pending.password,
+          authProvider: "local",
+          role: "student",
+          emailVerified: true,
+          lastUsedAt: new Date(),
+        });
+      } catch (error) {
+        if (error && error.code === 11000) {
+          user = await User.findOne({ email: pending.email });
+        }
+        if (!user) throw error;
+      }
+      await PendingRegistration.deleteOne({ _id: pending._id });
+
+      const token = signToken(user);
+      return res.json({
+        message: "Email verified successfully.",
+        token,
+        user: publicUser(user),
+      });
+    }
+
+    // Legacy path: accounts created before the pending-registration flow
+    // still hold their unverified state on the User document.
     const user = await User.findOne({ email }).select(
       "+verificationCodeHash +verificationExpiresAt +verificationAttempts",
     );
@@ -295,6 +406,40 @@ async function resendVerification(req, res) {
   if (!email) return res.status(400).json({ message: "Email is required." });
 
   try {
+    const pending = await PendingRegistration.findOne({ email }).select(
+      "+verificationLastSentAt",
+    );
+
+    if (pending) {
+      if (
+        pending.verificationLastSentAt &&
+        new Date() - pending.verificationLastSentAt < 60000
+      ) {
+        return res
+          .status(429)
+          .json({
+            message: "Please wait 60 seconds before requesting a new code.",
+          });
+      }
+
+      const verificationCode = generateSecureCode();
+      pending.verificationCodeHash = await hashString(verificationCode);
+      pending.verificationExpiresAt = new Date(Date.now() + CODE_TTL_MS);
+      pending.verificationAttempts = 0;
+      pending.verificationLastSentAt = new Date();
+      pending.expiresAt = new Date(Date.now() + PENDING_TTL_MS);
+      await pending.save();
+
+      console.log(`\n======================================================`);
+      console.log(`[OTP] Resent Verification Code for ${pending.email}: ${verificationCode}`);
+      console.log(`======================================================\n`);
+
+      emailService.sendVerificationEmail(pending.email, verificationCode).catch(err => {
+        console.error("Background email send error:", err);
+      });
+      return res.json({ message: "A new verification code has been sent." });
+    }
+
     const user = await User.findOne({ email }).select(
       "+verificationLastSentAt",
     );
@@ -537,6 +682,9 @@ async function googleCallback(req, res) {
     }
 
     if (!user) {
+      // Google proved ownership of this address, so any unverified signup
+      // for it is superseded.
+      await PendingRegistration.deleteOne({ email });
       user = await User.create({
         name,
         email,
@@ -563,6 +711,20 @@ async function googleCallback(req, res) {
   }
 }
 
+// Admin-only: reports exactly why email delivery fails on this host
+// (connect/auth/send per transport, with timings) and sends a test message
+// to the requesting admin's own address.
+async function emailDiagnostics(req, res) {
+  try {
+    const sendTo = req.query.send === "false" ? null : req.user.email;
+    const report = await emailService.diagnose(sendTo);
+    return res.json(report);
+  } catch (error) {
+    console.error("emailDiagnostics error:", error);
+    return res.status(500).json({ message: "Something went wrong." });
+  }
+}
+
 module.exports = {
   register,
   login,
@@ -573,4 +735,5 @@ module.exports = {
   me,
   googleAuth,
   googleCallback,
+  emailDiagnostics,
 };

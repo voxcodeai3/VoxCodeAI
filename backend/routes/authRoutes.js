@@ -9,8 +9,10 @@ const {
   me,
   googleAuth,
   googleCallback,
+  emailDiagnostics,
 } = require("../controllers/authController");
 const authMiddleware = require("../middleware/authMiddleware");
+const { requireAdmin } = require("../middleware/adminMiddleware");
 
 const router = express.Router();
 
@@ -20,6 +22,7 @@ router.post("/verify-email", verifyEmail);
 router.post("/resend-verification", resendVerification);
 router.post("/forgot-password", forgotPassword);
 router.post("/reset-password", resetPassword);
+router.post("/email-diagnostics", authMiddleware, requireAdmin, emailDiagnostics);
 router.get("/me", authMiddleware, me);
 router.get("/google", googleAuth);
 router.get("/google/callback", googleCallback);
