@@ -12,6 +12,36 @@ const TIMEOUTS = {
 const RESEND_API_URL = "https://api.resend.com";
 const BREVO_API_URL = "https://api.brevo.com";
 
+// Personal Google-account relay: a Apps Script web app (deployed by the app
+// owner) calls MailApp.sendEmail, so mail leaves from Gmail's own servers.
+// Only HTTPS is used, which works even where outbound SMTP ports are blocked.
+async function sendViaAppsScript(mailOptions) {
+  const url = process.env.APPS_SCRIPT_URL;
+  if (!url) throw new Error("APPS_SCRIPT_URL is not set");
+
+  const response = await fetch(url, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      token: process.env.APPS_SCRIPT_SECRET,
+      to: mailOptions.to,
+      subject: mailOptions.subject,
+      text: mailOptions.text,
+      html: mailOptions.html,
+    }),
+    signal: AbortSignal.timeout(20000),
+  });
+
+  if (!response.ok) {
+    throw new Error(`Apps Script HTTP ${response.status}`);
+  }
+  const data = await response.json().catch(() => null);
+  if (!data || data.ok !== true) {
+    throw new Error(data && data.error ? data.error : "unexpected response");
+  }
+  return data;
+}
+
 // EMAIL_FROM is written as `Name <address@domain>` (or a bare address).
 function parseFrom(raw) {
   const value = raw || "VoxCode <no-reply@voxcode.com>";
@@ -145,6 +175,15 @@ async function sendViaBrevo(mailOptions) {
 async function sendWithFallback(mailOptions) {
   const failures = [];
 
+  if (process.env.APPS_SCRIPT_URL) {
+    try {
+      await sendViaAppsScript(mailOptions);
+      return true;
+    } catch (error) {
+      failures.push(`apps script: ${error.message}`);
+    }
+  }
+
   if (process.env.BREVO_API_KEY) {
     try {
       await sendViaBrevo(mailOptions);
@@ -193,6 +232,8 @@ function getFrom() {
 // without guessing. Never throws; returns a structured report.
 async function diagnose(sendTo) {
   const report = {
+    appsScriptConfigured: !!process.env.APPS_SCRIPT_URL,
+    appsScript: null,
     brevoConfigured: !!process.env.BREVO_API_KEY,
     brevo: null,
     resendConfigured: !!process.env.RESEND_API_KEY,
@@ -201,6 +242,34 @@ async function diagnose(sendTo) {
     from: getFrom(),
     transports: [],
   };
+
+  if (report.appsScriptConfigured) {
+    try {
+      if (sendTo) {
+        await sendViaAppsScript({
+          to: sendTo,
+          subject: "VoxCode email diagnostics (Apps Script relay)",
+          text: "If you received this, the Apps Script relay works.",
+          html: "<p>If you received this, the Apps Script relay works.</p>",
+        });
+        report.appsScript = { ok: true, testEmailSentTo: sendTo };
+      } else {
+        const response = await fetch(process.env.APPS_SCRIPT_URL, {
+          method: "GET",
+          signal: AbortSignal.timeout(15000),
+        });
+        const data = await response.json().catch(() => null);
+        if (!response.ok || !data || data.ok !== true) {
+          throw new Error(
+            data && data.error ? data.error : `HTTP ${response.status}`,
+          );
+        }
+        report.appsScript = { ok: true, note: "web app reachable" };
+      }
+    } catch (error) {
+      report.appsScript = { ok: false, error: error.message };
+    }
+  }
 
   if (report.brevoConfigured) {
     try {
