@@ -10,6 +10,17 @@ const TIMEOUTS = {
 };
 
 const RESEND_API_URL = "https://api.resend.com";
+const BREVO_API_URL = "https://api.brevo.com";
+
+// EMAIL_FROM is written as `Name <address@domain>` (or a bare address).
+function parseFrom(raw) {
+  const value = raw || "VoxCode <no-reply@voxcode.com>";
+  const angled = value.match(/^\s*"?([^"<]*)"?\s*<([^<>]+)>\s*$/);
+  if (angled) {
+    return { name: angled[1].trim() || undefined, email: angled[2].trim() };
+  }
+  return { email: value.trim() };
+}
 
 function baseOptions() {
   const host = process.env.EMAIL_HOST;
@@ -76,8 +87,9 @@ async function resendRequest(path, { method = "GET", body } = {}) {
   return response.json().catch(() => ({}));
 }
 
-// HTTPS transport. Works even when the host blocks every outbound SMTP port,
-// which is common on free hosting. Preferred whenever RESEND_API_KEY is set.
+// HTTPS transport for Resend. Only usable for arbitrary recipients once a
+// domain is verified; otherwise Resend limits sends to your own account
+// address, so Brevo is preferred for accounts without a domain.
 async function sendViaResend(mailOptions) {
   await resendRequest("/emails", {
     method: "POST",
@@ -91,8 +103,56 @@ async function sendViaResend(mailOptions) {
   });
 }
 
+async function brevoRequest(path, { method = "GET", body } = {}) {
+  const apiKey = process.env.BREVO_API_KEY;
+  if (!apiKey) throw new Error("BREVO_API_KEY is not set");
+
+  const response = await fetch(`${BREVO_API_URL}${path}`, {
+    method,
+    headers: {
+      "api-key": apiKey,
+      "Content-Type": "application/json",
+      Accept: "application/json",
+    },
+    body: body ? JSON.stringify(body) : undefined,
+    signal: AbortSignal.timeout(15000),
+  });
+
+  if (!response.ok) {
+    const text = await response.text().catch(() => "");
+    throw new Error(`Brevo API HTTP ${response.status}: ${text.slice(0, 300)}`);
+  }
+  return response.json().catch(() => ({}));
+}
+
+// Brevo (free 300/day): the sender address is verified by clicking a link in
+// an email, so no domain/DNS ownership is required. Also pure HTTPS, so it
+// works from hosts that block SMTP.
+async function sendViaBrevo(mailOptions) {
+  const from = parseFrom(mailOptions.from);
+  await brevoRequest("/v3/smtp/email", {
+    method: "POST",
+    body: {
+      sender: { name: from.name || "VoxCode", email: from.email },
+      to: [{ email: mailOptions.to }],
+      subject: mailOptions.subject,
+      text: mailOptions.text,
+      html: mailOptions.html,
+    },
+  });
+}
+
 async function sendWithFallback(mailOptions) {
   const failures = [];
+
+  if (process.env.BREVO_API_KEY) {
+    try {
+      await sendViaBrevo(mailOptions);
+      return true;
+    } catch (error) {
+      failures.push(`brevo api: ${error.message}`);
+    }
+  }
 
   if (process.env.RESEND_API_KEY) {
     try {
@@ -133,12 +193,34 @@ function getFrom() {
 // without guessing. Never throws; returns a structured report.
 async function diagnose(sendTo) {
   const report = {
+    brevoConfigured: !!process.env.BREVO_API_KEY,
+    brevo: null,
     resendConfigured: !!process.env.RESEND_API_KEY,
     resend: null,
     smtpHost: process.env.EMAIL_HOST || "smtp.gmail.com",
     from: getFrom(),
     transports: [],
   };
+
+  if (report.brevoConfigured) {
+    try {
+      if (sendTo) {
+        await sendViaBrevo({
+          from: getFrom(),
+          to: sendTo,
+          subject: "VoxCode email diagnostics (Brevo)",
+          text: "If you received this, Brevo delivery works.",
+          html: "<p>If you received this, Brevo delivery works.</p>",
+        });
+        report.brevo = { ok: true, testEmailSentTo: sendTo };
+      } else {
+        await brevoRequest("/v3/smtp/email?limit=1");
+        report.brevo = { ok: true, note: "API key accepted" };
+      }
+    } catch (error) {
+      report.brevo = { ok: false, error: error.message };
+    }
+  }
 
   if (report.resendConfigured) {
     try {
