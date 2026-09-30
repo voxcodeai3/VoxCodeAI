@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Maximize, Minus, X, MessageCircle, Microchip, Trash2, User, BookOpen, Mic, Volume2, VolumeX } from 'lucide-react';
+import { Maximize, Minus, X, MessageCircle, Microchip, Trash2, User, BookOpen, Mic, Volume2, VolumeX, MoreVertical } from 'lucide-react';
 import ConversationPanel from './ConversationPanel';
 import MessageComposer from './MessageComposer';
 import { useAI } from '../../context/AIContext';
@@ -12,12 +12,26 @@ import CodePractice from '../practice/CodePractice';
 import { useLearning } from '../../context/LearningContext';
 import { useInterview } from '../../context/InterviewContext';
 
+function MenuItem({ icon: Icon, label, onSelect, danger = false }) {
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={`flex w-full items-center gap-3 px-4 py-2.5 text-left text-sm transition-colors ${danger ? 'text-red-400/80 hover:bg-red-400/10 hover:text-red-300' : 'text-cyan-100/80 hover:bg-cyan-400/10 hover:text-cyan-200'}`}
+    >
+      <Icon className="h-4 w-4 shrink-0" />
+      <span>{label}</span>
+    </button>
+  );
+}
+
 function TextConsole({ expanded = false }) {
   const [isExpanded, setIsExpanded] = useState(expanded);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isLearningOpen, setIsLearningOpen] = useState(false);
   const [isInterviewOpen, setIsInterviewOpen] = useState(false);
   const [isPracticeOpen, setIsPracticeOpen] = useState(false);
+  const [isMenuOpen, setIsMenuOpen] = useState(false);
   const { messages, isThinking, clearConversation, loadConversationMessages, openPractice, clearOpenPractice, practiceMode } = useAI();
   const { voiceEnabled, toggleVoice, support } = useVoice();
   const { activeConversationId } = useConversations();
@@ -53,12 +67,33 @@ function TextConsole({ expanded = false }) {
     wasExpandedRef.current = isExpanded;
   }, [isExpanded]);
 
+  // Reset the mobile overflow menu whenever the console collapses.
+  useEffect(() => {
+    if (!isExpanded) setIsMenuOpen(false);
+  }, [isExpanded]);
+
+  // Close the mobile overflow menu with Escape.
+  useEffect(() => {
+    if (!isMenuOpen) return undefined;
+    const onKey = (e) => {
+      if (e.key === 'Escape') setIsMenuOpen(false);
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [isMenuOpen]);
+
   const handlePracticeClick = () => {
     if (activeSession) {
       setIsLearningOpen(true);
     } else {
       setIsPracticeOpen(true);
     }
+  };
+
+  // Runs a mobile menu action, then closes the menu.
+  const selectMenuAction = (action) => () => {
+    setIsMenuOpen(false);
+    action();
   };
 
   return (
@@ -83,7 +118,7 @@ function TextConsole({ expanded = false }) {
       )}
       {isExpanded && (
         <div className="w-[calc(100vw-32px)] sm:w-[70vw] h-[80vh] max-w-[900px] max-h-[700px] rounded-3xl border border-cyan-400/20 bg-[#040a14]/85 backdrop-blur-2xl flex flex-col overflow-hidden transition-all duration-500" style={{ paddingBottom: 'env(safe-area-inset-bottom)' }}>
-          <div className="flex items-center justify-between border-b border-cyan-400/10 px-6 py-4">
+          <div className="relative z-20 flex items-center justify-between border-b border-cyan-400/10 px-4 py-4 sm:px-6">
             <div className="flex items-center gap-3">
               <div className="h-10 w-10 rounded-full border border-cyan-400/20 bg-cyan-400/10 flex items-center justify-center">
                 <Microchip className="h-5 w-5 text-cyan-300" />
@@ -96,47 +131,102 @@ function TextConsole({ expanded = false }) {
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={toggleVoice}
-                aria-label={voiceEnabled ? 'Mute voice' : 'Enable voice'}
-                title={voiceEnabled ? 'Voice: ON' : 'Voice: OFF'}
-                className={`rounded-lg p-1.5 transition-colors ${voiceEnabled ? 'text-cyan-400/60 hover:text-cyan-400' : 'text-amber-400 hover:text-amber-300'}`}
-              >
-                {voiceEnabled ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
-              </button>
-              <button
-                type="button"
-                onClick={() => setIsInterviewOpen(true)}
-                aria-label="Open interview"
-                className="rounded-lg p-1.5 text-cyan-400/60 hover:text-cyan-400 transition-colors"
-              >
-                <Mic className="h-4 w-4" />
-              </button>
-              <button
-                type="button"
-                onClick={handlePracticeClick}
-                aria-label="Open practice"
-                className="rounded-lg p-1.5 text-cyan-400/60 hover:text-cyan-400 transition-colors"
-              >
-                <BookOpen className="h-4 w-4" />
-              </button>
-              <button
-                type="button"
-                onClick={() => setIsProfileOpen(true)}
-                aria-label="Learning profile"
-                className="rounded-lg p-1.5 text-cyan-400/60 hover:text-cyan-400 transition-colors"
-              >
-                <User className="h-4 w-4" />
-              </button>
-              <button
-                type="button"
-                onClick={clearConversation}
-                aria-label="Clear conversation"
-              >
-                <Trash2 className="h-4 w-4 text-cyan-400/60 hover:text-red-400 transition-colors" />
-              </button>
+            <div className="relative flex items-center gap-1.5 sm:gap-3">
+              {/* Desktop: every action directly visible */}
+              <div className="hidden items-center gap-3 md:flex">
+                <button
+                  type="button"
+                  onClick={toggleVoice}
+                  aria-label={voiceEnabled ? 'Mute voice' : 'Enable voice'}
+                  title={voiceEnabled ? 'Voice: ON' : 'Voice: OFF'}
+                  className={`rounded-lg p-1.5 transition-colors ${voiceEnabled ? 'text-cyan-400/60 hover:text-cyan-400' : 'text-amber-400 hover:text-amber-300'}`}
+                >
+                  {voiceEnabled ? <Volume2 className="h-4 w-4" /> : <VolumeX className="h-4 w-4" />}
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsInterviewOpen(true)}
+                  aria-label="Open interview"
+                  className="rounded-lg p-1.5 text-cyan-400/60 hover:text-cyan-400 transition-colors"
+                >
+                  <Mic className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={handlePracticeClick}
+                  aria-label="Open practice"
+                  className="rounded-lg p-1.5 text-cyan-400/60 hover:text-cyan-400 transition-colors"
+                >
+                  <BookOpen className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setIsProfileOpen(true)}
+                  aria-label="Learning profile"
+                  className="rounded-lg p-1.5 text-cyan-400/60 hover:text-cyan-400 transition-colors"
+                >
+                  <User className="h-4 w-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={clearConversation}
+                  aria-label="Clear conversation"
+                >
+                  <Trash2 className="h-4 w-4 text-cyan-400/60 hover:text-red-400 transition-colors" />
+                </button>
+              </div>
+              {/* Mobile: interview, voice, practice, profile and clear live in a dropdown */}
+              <div className="md:hidden">
+                <button
+                  type="button"
+                  onClick={() => setIsMenuOpen((open) => !open)}
+                  aria-label="Console options"
+                  aria-expanded={isMenuOpen}
+                  className="rounded-lg p-1.5 text-cyan-400/60 hover:text-cyan-400 transition-colors"
+                >
+                  <MoreVertical className="h-4 w-4" />
+                </button>
+                {isMenuOpen && (
+                  <>
+                    <button
+                      type="button"
+                      aria-hidden="true"
+                      tabIndex={-1}
+                      onClick={() => setIsMenuOpen(false)}
+                      className="fixed inset-0 z-10 cursor-default"
+                    />
+                    <div className="absolute right-0 top-full z-20 mt-2 w-52 overflow-hidden rounded-xl border border-cyan-400/20 bg-[#040a14]/95 shadow-[0_8px_30px_rgba(0,0,0,0.6)] backdrop-blur-2xl">
+                      <MenuItem
+                        icon={voiceEnabled ? Volume2 : VolumeX}
+                        label={voiceEnabled ? 'Voice: On' : 'Voice: Off'}
+                        onSelect={selectMenuAction(toggleVoice)}
+                      />
+                      <MenuItem
+                        icon={Mic}
+                        label="Interview"
+                        onSelect={selectMenuAction(() => setIsInterviewOpen(true))}
+                      />
+                      <MenuItem
+                        icon={BookOpen}
+                        label="Practice"
+                        onSelect={selectMenuAction(handlePracticeClick)}
+                      />
+                      <MenuItem
+                        icon={User}
+                        label="Profile"
+                        onSelect={selectMenuAction(() => setIsProfileOpen(true))}
+                      />
+                      <MenuItem
+                        icon={Trash2}
+                        label="Clear chat"
+                        danger
+                        onSelect={selectMenuAction(clearConversation)}
+                      />
+                    </div>
+                  </>
+                )}
+              </div>
+              {/* Always visible, including on mobile: minimize + close */}
               <button
                 type="button"
                 onClick={() => setIsExpanded(false)}
