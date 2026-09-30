@@ -9,9 +9,6 @@ const TIMEOUTS = {
   socketTimeout: 20000,
 };
 
-const RESEND_API_URL = "https://api.resend.com";
-const BREVO_API_URL = "https://api.brevo.com";
-
 // Personal Google-account relay: a Apps Script web app (deployed by the app
 // owner) calls MailApp.sendEmail, so mail leaves from Gmail's own servers.
 // Only HTTPS is used, which works even where outbound SMTP ports are blocked.
@@ -40,16 +37,6 @@ async function sendViaAppsScript(mailOptions) {
     throw new Error(data && data.error ? data.error : "unexpected response");
   }
   return data;
-}
-
-// EMAIL_FROM is written as `Name <address@domain>` (or a bare address).
-function parseFrom(raw) {
-  const value = raw || "VoxCode <no-reply@voxcode.com>";
-  const angled = value.match(/^\s*"?([^"<]*)"?\s*<([^<>]+)>\s*$/);
-  if (angled) {
-    return { name: angled[1].trim() || undefined, email: angled[2].trim() };
-  }
-  return { email: value.trim() };
 }
 
 function baseOptions() {
@@ -96,82 +83,9 @@ function buildCandidates() {
   });
 }
 
-async function resendRequest(path, { method = "GET", body } = {}) {
-  const apiKey = process.env.RESEND_API_KEY;
-  if (!apiKey) throw new Error("RESEND_API_KEY is not set");
-
-  const response = await fetch(`${RESEND_API_URL}${path}`, {
-    method,
-    headers: {
-      Authorization: `Bearer ${apiKey}`,
-      "Content-Type": "application/json",
-    },
-    body: body ? JSON.stringify(body) : undefined,
-    signal: AbortSignal.timeout(15000),
-  });
-
-  if (!response.ok) {
-    const text = await response.text().catch(() => "");
-    throw new Error(`Resend API HTTP ${response.status}: ${text.slice(0, 300)}`);
-  }
-  return response.json().catch(() => ({}));
-}
-
-// HTTPS transport for Resend. Only usable for arbitrary recipients once a
-// domain is verified; otherwise Resend limits sends to your own account
-// address, so Brevo is preferred for accounts without a domain.
-async function sendViaResend(mailOptions) {
-  await resendRequest("/emails", {
-    method: "POST",
-    body: {
-      from: mailOptions.from,
-      to: [mailOptions.to],
-      subject: mailOptions.subject,
-      text: mailOptions.text,
-      html: mailOptions.html,
-    },
-  });
-}
-
-async function brevoRequest(path, { method = "GET", body } = {}) {
-  const apiKey = process.env.BREVO_API_KEY;
-  if (!apiKey) throw new Error("BREVO_API_KEY is not set");
-
-  const response = await fetch(`${BREVO_API_URL}${path}`, {
-    method,
-    headers: {
-      "api-key": apiKey,
-      "Content-Type": "application/json",
-      Accept: "application/json",
-    },
-    body: body ? JSON.stringify(body) : undefined,
-    signal: AbortSignal.timeout(15000),
-  });
-
-  if (!response.ok) {
-    const text = await response.text().catch(() => "");
-    throw new Error(`Brevo API HTTP ${response.status}: ${text.slice(0, 300)}`);
-  }
-  return response.json().catch(() => ({}));
-}
-
-// Brevo (free 300/day): the sender address is verified by clicking a link in
-// an email, so no domain/DNS ownership is required. Also pure HTTPS, so it
-// works from hosts that block SMTP.
-async function sendViaBrevo(mailOptions) {
-  const from = parseFrom(mailOptions.from);
-  await brevoRequest("/v3/smtp/email", {
-    method: "POST",
-    body: {
-      sender: { name: from.name || "VoxCode", email: from.email },
-      to: [{ email: mailOptions.to }],
-      subject: mailOptions.subject,
-      text: mailOptions.text,
-      html: mailOptions.html,
-    },
-  });
-}
-
+// Primary transport: the Google relay above. Direct SMTP stays as the
+// fallback because it works on normal networks (local dev); on free Render
+// instances outbound SMTP ports are blocked, so the relay must be configured.
 async function sendWithFallback(mailOptions) {
   const failures = [];
 
@@ -181,24 +95,6 @@ async function sendWithFallback(mailOptions) {
       return true;
     } catch (error) {
       failures.push(`apps script: ${error.message}`);
-    }
-  }
-
-  if (process.env.BREVO_API_KEY) {
-    try {
-      await sendViaBrevo(mailOptions);
-      return true;
-    } catch (error) {
-      failures.push(`brevo api: ${error.message}`);
-    }
-  }
-
-  if (process.env.RESEND_API_KEY) {
-    try {
-      await sendViaResend(mailOptions);
-      return true;
-    } catch (error) {
-      failures.push(`resend api: ${error.message}`);
     }
   }
 
@@ -234,10 +130,6 @@ async function diagnose(sendTo) {
   const report = {
     appsScriptConfigured: !!process.env.APPS_SCRIPT_URL,
     appsScript: null,
-    brevoConfigured: !!process.env.BREVO_API_KEY,
-    brevo: null,
-    resendConfigured: !!process.env.RESEND_API_KEY,
-    resend: null,
     smtpHost: process.env.EMAIL_HOST || "smtp.gmail.com",
     from: getFrom(),
     transports: [],
@@ -268,46 +160,6 @@ async function diagnose(sendTo) {
       }
     } catch (error) {
       report.appsScript = { ok: false, error: error.message };
-    }
-  }
-
-  if (report.brevoConfigured) {
-    try {
-      if (sendTo) {
-        await sendViaBrevo({
-          from: getFrom(),
-          to: sendTo,
-          subject: "VoxCode email diagnostics (Brevo)",
-          text: "If you received this, Brevo delivery works.",
-          html: "<p>If you received this, Brevo delivery works.</p>",
-        });
-        report.brevo = { ok: true, testEmailSentTo: sendTo };
-      } else {
-        await brevoRequest("/v3/smtp/email?limit=1");
-        report.brevo = { ok: true, note: "API key accepted" };
-      }
-    } catch (error) {
-      report.brevo = { ok: false, error: error.message };
-    }
-  }
-
-  if (report.resendConfigured) {
-    try {
-      if (sendTo) {
-        await sendViaResend({
-          from: getFrom(),
-          to: sendTo,
-          subject: "VoxCode email diagnostics",
-          text: "If you received this, Resend delivery works.",
-          html: "<p>If you received this, Resend delivery works.</p>",
-        });
-        report.resend = { ok: true, testEmailSentTo: sendTo };
-      } else {
-        await resendRequest("/emails?limit=1");
-        report.resend = { ok: true, note: "API key accepted" };
-      }
-    } catch (error) {
-      report.resend = { ok: false, error: error.message };
     }
   }
 
