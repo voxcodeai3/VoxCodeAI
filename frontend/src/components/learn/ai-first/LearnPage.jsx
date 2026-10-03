@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback } from 'react';
-import { Loader2 } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Loader2, ChevronLeft } from 'lucide-react';
 import api from '../../../services/api';
 import { useAuth } from '../../../context/AuthContext';
 import PathSelector from './PathSelector';
@@ -7,6 +8,7 @@ import AssessmentFlow from './AssessmentFlow';
 import LearningExperience from './LearningExperience';
 
 export default function LearnPage() {
+  const navigate = useNavigate();
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState('loading'); // 'loading' | 'paths' | 'assessment' | 'learning'
@@ -71,6 +73,16 @@ export default function LearnPage() {
 
   return (
     <div className="min-h-screen bg-[#08090d] text-white">
+      <div className="border-b border-white/[0.06] px-4 py-2.5 flex items-center">
+        <button
+          type="button"
+          onClick={() => navigate('/voxcode')}
+          className="flex items-center gap-1.5 text-[11px] text-white/40 hover:text-white/70 transition-colors min-w-[44px] min-h-[32px]"
+        >
+          <ChevronLeft className="w-3.5 h-3.5" /> Home
+        </button>
+      </div>
+
       {view === 'paths' && (
         <div className="px-4 py-8">
           <PathSelector onSelect={handleSelectPath} />
