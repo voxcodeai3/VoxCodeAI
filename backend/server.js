@@ -11,9 +11,7 @@ const interviewRoutes = require("./routes/interviewRoutes");
 const analyticsRoutes = require("./routes/analyticsRoutes");
 const projectRoutes = require("./routes/projectRoutes");
 const versionRoutes = require("./routes/versionRoutes");
-const courseRoutes = require("./routes/courseRoutes");
 const learningPathRoutes = require("./routes/learningPathRoutes");
-const learningProgressRoutes = require("./routes/learningProgressRoutes");
 const recommendationRoutes = require("./routes/recommendationRoutes");
 const learningDashboardRoutes = require("./routes/learningDashboardRoutes");
 const assessmentRoutes = require("./routes/assessmentRoutes");
@@ -71,14 +69,8 @@ app.use("/api/interviews", interviewRoutes);
 // Learning analytics routes (JWT protected)
 app.use("/api/analytics", analyticsRoutes);
 
-// Course routes (JWT protected)
-app.use("/api/courses", courseRoutes);
-
 // Learning path routes (JWT protected)
 app.use("/api/learning-paths", learningPathRoutes);
-
-// Learning progress & skill routes (JWT protected)
-app.use("/api/learning", learningProgressRoutes);
 
 // Learning dashboard routes (JWT protected)
 app.use("/api/learning-dashboard", learningDashboardRoutes);

@@ -55,7 +55,6 @@ export default function CodeWorkspace({ isOpen, onClose }) {
     setExerciseLesson(null);
     starterEnsuredRef.current = null;
     clearPracticeContext();
-    try { localStorage.removeItem('voxcode:practiceLesson'); } catch {}
   }, []);
 
   const editorRef = useRef(null);
@@ -129,9 +128,9 @@ export default function CodeWorkspace({ isOpen, onClose }) {
   }, []);
 
   // ─── Exercise context: load when workspace opens ───
-  // Supports new AI-first practice context (voxcode:practiceExercise) and
-  // legacy lesson context (voxcode:practiceLesson). Never clears on close —
-  // context persists so AI Teacher ↔ Code Workspace navigation keeps state.
+  // Supports AI-first practice context (voxcode:practiceExercise).
+  // Never clears on close — context persists so AI Teacher ↔ Code Workspace
+  // navigation keeps state.
   const starterEnsuredRef = useRef(null);
   useEffect(() => {
     if (!isOpen) return;
@@ -165,19 +164,8 @@ export default function CodeWorkspace({ isOpen, onClose }) {
         });
         return;
       }
-      const raw = localStorage.getItem('voxcode:practiceLesson');
-      if (raw) {
-        const data = JSON.parse(raw);
-        setExerciseLesson(data);
-        setExercise({
-          title: data.title || 'Exercise',
-          instructions: data.objective || `Practice for ${data.title}`,
-          requirements: [],
-        });
-      } else {
-        setExercise(null);
-        setExerciseLesson(null);
-      }
+      setExercise(null);
+      setExerciseLesson(null);
     } catch {
       setExercise(null);
     }
@@ -207,8 +195,6 @@ export default function CodeWorkspace({ isOpen, onClose }) {
     const lang = activeFileData?.language || 'javascript';
     const filename = activeFile || 'untitled';
     const projectContext = currentProject ? `Project: ${currentProject.name}\n` : '';
-    let practiceLesson = null;
-    try { const raw = localStorage.getItem('voxcode:practiceLesson'); if (raw) practiceLesson = JSON.parse(raw); } catch {}
 
     if (actionId === 'generate') {
       setShowGenerateInput(true);
@@ -249,9 +235,7 @@ export default function CodeWorkspace({ isOpen, onClose }) {
         currentCode: code || undefined,
         projectFiles: currentProject ? Object.keys(files) : undefined,
         projectId: currentProject?._id,
-        lessonId: practiceLesson?.lessonId,
       },
-      lessonId: practiceLesson?.lessonId,
     });
   }, [selectedCode, activeFileData, activeFile, currentProject, files, sendMessage]);
 
@@ -273,8 +257,6 @@ export default function CodeWorkspace({ isOpen, onClose }) {
 
     setShowGenerateInput(false);
     setGenerateInput('');
-    let practiceLesson2 = null;
-    try { const raw = localStorage.getItem('voxcode:practiceLesson'); if (raw) practiceLesson2 = JSON.parse(raw); } catch {}
     sendMessage(prompt, 'text', {
       codingContext: {
         activeFile: filename,
@@ -282,9 +264,7 @@ export default function CodeWorkspace({ isOpen, onClose }) {
         currentCode: code || undefined,
         projectFiles: currentProject ? Object.keys(files) : undefined,
         projectId: currentProject?._id,
-        lessonId: practiceLesson2?.lessonId,
       },
-      lessonId: practiceLesson2?.lessonId,
     });
   }, [generateInput, activeFileData, activeFile, currentProject, files, sendMessage]);
 
@@ -359,9 +339,7 @@ export default function CodeWorkspace({ isOpen, onClose }) {
                 type="button"
                 onClick={() => {
                   if (saveStatus === 'unsaved' && !window.confirm('You have unsaved changes. Leave without saving?')) return;
-                  const id = exerciseLesson?.lessonId;
-                  if (id) navigate(`/learn/lesson/${id}`);
-                  else navigate('/learn');
+                  navigate('/learn');
                   handleDismissExercise();
                   onClose();
                 }}

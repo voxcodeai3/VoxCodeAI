@@ -65,7 +65,7 @@ export default function Onboarding() {
     if (selectedPathId) {
       navigate(`/learn/path/${selectedPathId}`);
     } else {
-      navigate('/learn/courses');
+      navigate('/learn/paths');
     }
   };
 

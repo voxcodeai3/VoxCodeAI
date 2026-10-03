@@ -12,81 +12,19 @@ export function useCourse() {
 
 export function CourseProvider({ children }) {
   const { isAuthenticated } = useAuth();
-  const [courses, setCourses] = useState([]);
   const [learningPaths, setLearningPaths] = useState([]);
-  const [currentCourse, setCurrentCourse] = useState(null);
-  const [currentLesson, setCurrentLesson] = useState(null);
-  const [progress, setProgress] = useState(null);
-  const [skills, setSkills] = useState(null);
   const [recommendations, setRecommendations] = useState([]);
   const [dashboard, setDashboard] = useState(null);
-  const [calendar, setCalendar] = useState(null);
   const [loading, setLoading] = useState(false);
-  const [error, setError] = useState(null);
 
   useEffect(() => {
     if (!isAuthenticated) {
-      setCourses([]);
       setLearningPaths([]);
-      setCurrentCourse(null);
-      setCurrentLesson(null);
-      setProgress(null);
-      setSkills(null);
       setRecommendations([]);
       setDashboard(null);
-      setCalendar(null);
       return;
     }
   }, [isAuthenticated]);
-
-  const fetchCourses = useCallback(async (filters = {}) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const params = new URLSearchParams();
-      if (filters.language) params.set('language', filters.language);
-      if (filters.difficulty) params.set('difficulty', filters.difficulty);
-      if (filters.search) params.set('search', filters.search);
-      const { data } = await api.get(`/courses?${params.toString()}`);
-      setCourses(data);
-      return data;
-    } catch (err) {
-      setError('Failed to load courses');
-      return [];
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  const fetchCourse = useCallback(async (courseId) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const { data } = await api.get(`/courses/${courseId}`);
-      setCurrentCourse(data);
-      return data;
-    } catch (err) {
-      setError('Failed to load course');
-      return null;
-    } finally {
-      setLoading(false);
-    }
-  }, []);
-
-  const fetchLesson = useCallback(async (lessonId) => {
-    setLoading(true);
-    setError(null);
-    try {
-      const { data } = await api.get(`/courses/lesson/${lessonId}`);
-      setCurrentLesson(data);
-      return data;
-    } catch (err) {
-      setError('Failed to load lesson');
-      return null;
-    } finally {
-      setLoading(false);
-    }
-  }, []);
 
   const fetchLearningPaths = useCallback(async () => {
     try {
@@ -110,41 +48,6 @@ export function CourseProvider({ children }) {
     }
   }, []);
 
-  const fetchCourseProgress = useCallback(async (courseId) => {
-    try {
-      const { data } = await api.get(`/learning/progress?courseId=${courseId}`);
-      setProgress(data);
-      return data;
-    } catch (err) {
-      return null;
-    }
-  }, []);
-
-  const updateLessonProgress = useCallback(async ({ lessonId, courseId, status, progress: prog, score }) => {
-    try {
-      const { data } = await api.post('/learning/progress', {
-        lessonId,
-        courseId,
-        status,
-        progress: prog,
-        score,
-      });
-      return data;
-    } catch (err) {
-      return null;
-    }
-  }, []);
-
-  const fetchSkills = useCallback(async () => {
-    try {
-      const { data } = await api.get('/learning/skills');
-      setSkills(data);
-      return data;
-    } catch (err) {
-      return null;
-    }
-  }, []);
-
   const fetchRecommendations = useCallback(async () => {
     try {
       const { data } = await api.get('/recommendations');
@@ -159,16 +62,6 @@ export function CourseProvider({ children }) {
     try {
       const { data } = await api.get('/learning-dashboard/dashboard');
       setDashboard(data);
-      return data;
-    } catch (err) {
-      return null;
-    }
-  }, []);
-
-  const fetchCalendar = useCallback(async () => {
-    try {
-      const { data } = await api.get('/learning-dashboard/calendar');
-      setCalendar(data);
       return data;
     } catch (err) {
       return null;
@@ -196,35 +89,14 @@ export function CourseProvider({ children }) {
     }
   }, []);
 
-  const clearLesson = useCallback(() => {
-    setCurrentLesson(null);
-  }, []);
-
-  const clearCourse = useCallback(() => {
-    setCurrentCourse(null);
-    setCurrentLesson(null);
-  }, []);
-
   const value = useMemo(() => ({
-    courses, learningPaths, currentCourse, currentLesson,
-    progress, skills, recommendations, dashboard, calendar,
-    loading, error,
-    fetchCourses, fetchCourse, fetchLesson,
+    learningPaths, recommendations, dashboard, loading,
     fetchLearningPaths, fetchLearningPath,
-    fetchCourseProgress, updateLessonProgress,
-    fetchSkills, fetchRecommendations,
-    fetchDashboard, fetchCalendar, saveOnboarding, setActivePath,
-    clearLesson, clearCourse,
+    fetchRecommendations, fetchDashboard, saveOnboarding, setActivePath,
   }), [
-    courses, learningPaths, currentCourse, currentLesson,
-    progress, skills, recommendations, dashboard, calendar,
-    loading, error,
-    fetchCourses, fetchCourse, fetchLesson,
+    learningPaths, recommendations, dashboard, loading,
     fetchLearningPaths, fetchLearningPath,
-    fetchCourseProgress, updateLessonProgress,
-    fetchSkills, fetchRecommendations,
-    fetchDashboard, fetchCalendar, saveOnboarding, setActivePath,
-    clearLesson, clearCourse,
+    fetchRecommendations, fetchDashboard, saveOnboarding, setActivePath,
   ]);
 
   return (

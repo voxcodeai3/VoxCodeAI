@@ -2,7 +2,6 @@ const Technology = require("../models/Technology");
 const LearningPath = require("../models/LearningPath");
 const Stage = require("../models/Stage");
 const Topic = require("../models/Topic");
-const { Lesson } = require("../models/Course");
 
 const CATEGORIES = [
   { id: "programming_languages", slug: "programming_languages", name: "Programming Languages", description: "Core languages for every developer" },
@@ -130,17 +129,5 @@ exports.getStageTopics = async (req, res) => {
   } catch (err) {
     if (err.kind === "ObjectId") return res.status(400).json({ message: "Invalid stage id" });
     res.status(500).json({ message: "Failed to load topics" });
-  }
-};
-
-exports.getTopicLessons = async (req, res) => {
-  try {
-    const topic = await Topic.findById(req.params.topicId);
-    if (!topic) return res.status(404).json({ message: "Topic not found" });
-    const lessons = await Lesson.find({ topic: req.params.topicId, status: "published" }).sort({ order: 1 });
-    res.json(lessons);
-  } catch (err) {
-    if (err.kind === "ObjectId") return res.status(400).json({ message: "Invalid topic id" });
-    res.status(500).json({ message: "Failed to load lessons" });
   }
 };

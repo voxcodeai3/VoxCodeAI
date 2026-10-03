@@ -21,9 +21,6 @@ import Projects from "./pages/Projects";
 import OAuthCallback from "./pages/OAuthCallback";
 import AuthLoading from "./components/AuthLoading";
 import LearnPage from "./components/learn/ai-first/LearnPage";
-import CourseListing from "./pages/CourseListing";
-import CourseDetail from "./pages/CourseDetail";
-import LessonViewer from "./pages/LessonViewer";
 import LearningPaths from "./pages/LearningPaths";
 import LearningPathDetail from "./pages/LearningPathDetail";
 import Onboarding from "./pages/Onboarding";
@@ -194,30 +191,6 @@ function App() {
                                   element={
                                     <ProtectedRoute>
                                       <Onboarding />
-                                    </ProtectedRoute>
-                                  }
-                                />
-                                <Route
-                                  path="/learn/courses"
-                                  element={
-                                    <ProtectedRoute>
-                                      <CourseListing />
-                                    </ProtectedRoute>
-                                  }
-                                />
-                                <Route
-                                  path="/learn/course/:id"
-                                  element={
-                                    <ProtectedRoute>
-                                      <CourseDetail />
-                                    </ProtectedRoute>
-                                  }
-                                />
-                                <Route
-                                  path="/learn/lesson/:lessonId"
-                                  element={
-                                    <ProtectedRoute>
-                                      <LessonViewer />
                                     </ProtectedRoute>
                                   }
                                 />

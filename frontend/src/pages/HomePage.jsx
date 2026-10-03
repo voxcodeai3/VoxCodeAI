@@ -90,13 +90,6 @@ export default function HomePage() {
           <p className="text-white/20 text-xs">
             Or explore{" "}
             <button
-              onClick={() => navigate("/learn/courses")}
-              className="text-cyan-400/50 hover:text-cyan-400"
-            >
-              courses
-            </button>{" "}
-            and{" "}
-            <button
               onClick={() => navigate("/learn/paths")}
               className="text-cyan-400/50 hover:text-cyan-400"
             >
@@ -227,11 +220,7 @@ export default function HomePage() {
                     </div>
                   </div>
                   <button
-                    onClick={() => {
-                      if (nextRec.lessonId)
-                        navigate(`/learn/lesson/${nextRec.lessonId}`);
-                      else navigate("/learn");
-                    }}
+                    onClick={() => navigate("/learn")}
                     className="px-3 py-2 bg-cyan-500/10 text-cyan-400 rounded-lg text-xs font-medium hover:bg-cyan-500/20 transition-colors shrink-0 sm:px-4"
                   >
                     {nextRec.type === "continue"

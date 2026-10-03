@@ -8,7 +8,6 @@ export const learningApi = {
   getPath: (pathId) => api.get(`/learning/paths/${pathId}`).then(r => r.data),
   getPathStages: (pathId) => api.get(`/learning/paths/${pathId}/stages`).then(r => r.data),
   getStageTopics: (stageId) => api.get(`/learning/stages/${stageId}/topics`).then(r => r.data),
-  getTopicLessons: (topicId) => api.get(`/learning/topics/${topicId}/lessons`).then(r => r.data),
 };
 
 export default learningApi;

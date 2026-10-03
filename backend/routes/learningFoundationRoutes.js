@@ -9,7 +9,6 @@ const {
   getPathById,
   getPathStages,
   getStageTopics,
-  getTopicLessons,
 } = require("../controllers/learningFoundationController");
 
 router.get("/categories", authMiddleware, getCategories);
@@ -19,6 +18,5 @@ router.get("/paths", authMiddleware, getPaths);
 router.get("/paths/:pathId", authMiddleware, getPathById);
 router.get("/paths/:pathId/stages", authMiddleware, getPathStages);
 router.get("/stages/:stageId/topics", authMiddleware, getStageTopics);
-router.get("/topics/:topicId/lessons", authMiddleware, getTopicLessons);
 
 module.exports = router;
