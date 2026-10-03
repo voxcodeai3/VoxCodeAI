@@ -60,9 +60,15 @@ export function VoiceProvider({ children }) {
   // recognition session refs
   const recognizerRef = useRef(null);
   const finalTextRef = useRef('');
+  const interimTextRef = useRef('');
   const gotResultRef = useRef(false);
   const endingRef = useRef(false);
   const hasErrorRef = useRef(false);
+  // Guards stale callbacks from a replaced session (silent auto-retry).
+  const sessionSeqRef = useRef(0);
+  const audioStartedRef = useRef(false);
+  const retriedRef = useRef(false);
+  const beepCtxRef = useRef(null);
 
   // handler registered by AIContext — receives finalized voice transcripts
   const finalHandlerRef = useRef(null);
@@ -136,6 +142,31 @@ export function VoiceProvider({ children }) {
     }
   }, []);
 
+  // Short tone played when mic capture is actually live. Android's
+  // recognizer takes 1-2s to boot; speech given before it is lost.
+  const playReadyBeep = useCallback(() => {
+    try {
+      const AC = window.AudioContext || window.webkitAudioContext;
+      if (!AC) return;
+      if (!beepCtxRef.current) beepCtxRef.current = new AC();
+      const ctx = beepCtxRef.current;
+      if (ctx.state === 'suspended') ctx.resume().catch(() => {});
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
+      osc.type = 'sine';
+      osc.frequency.value = 880;
+      gain.gain.setValueAtTime(0.0001, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.1, ctx.currentTime + 0.01);
+      gain.gain.exponentialRampToValueAtTime(0.0001, ctx.currentTime + 0.18);
+      osc.connect(gain);
+      gain.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.2);
+    } catch {
+      /* beep is best-effort */
+    }
+  }, []);
+
   const startLoop = useCallback(() => {
     if (loopingRef.current) return;
     loopingRef.current = true;
@@ -199,17 +230,25 @@ export function VoiceProvider({ children }) {
 
     if (!deliver) {
       finalTextRef.current = '';
+      interimTextRef.current = '';
       setTranscript('');
       setInteractionState((s) => (s === 'listening' || s === 'transcribing' ? 'idle' : s));
       return;
     }
 
-    const said = (finalTextRef.current || '').trim();
+    // Prefer final results; fall back to interim text — some mobile sessions
+    // end before the browser finalizes what it heard.
+    const said = `${finalTextRef.current || ''} ${interimTextRef.current || ''}`.trim();
     finalTextRef.current = '';
+    interimTextRef.current = '';
     setTranscript(said);
 
     if (!said && !gotResultRef.current && !hasErrorRef.current) {
-      setErrorMessage(friendlyRecognitionError('no-speech'));
+      setErrorMessage(
+        isMobileBrowser()
+          ? "I didn't catch any speech. Tap the mic, wait for the ready beep, then speak."
+          : friendlyRecognitionError('no-speech'),
+      );
       setInteractionState('error');
       return;
     }
@@ -243,36 +282,83 @@ export function VoiceProvider({ children }) {
     setErrorMessage('');
     hasErrorRef.current = false;
     finalTextRef.current = '';
+    interimTextRef.current = '';
     gotResultRef.current = false;
+    audioStartedRef.current = false;
+    retriedRef.current = false;
+    const seq = ++sessionSeqRef.current;
     setInteractionState('listening');
 
     const mobile = isMobileBrowser();
-    if (!mobile) attachStream();
+    if (!mobile) {
+      attachStream();
+    } else if (!beepCtxRef.current) {
+      // Create the beep context inside the tap gesture — mobile browsers
+      // refuse to start audio created outside one.
+      try {
+        const AC = window.AudioContext || window.webkitAudioContext;
+        if (AC) beepCtxRef.current = new AC();
+      } catch {
+        /* no beep, recognition still works */
+      }
+    }
 
-    recognizerRef.current = createSpeechRecognition({
-      lang: 'en-US',
-      stallTimeoutMs: mobile ? 12000 : 0,
-      onResult: ({ finalText, interimText }) => {
-        gotResultRef.current = true;
-        finalTextRef.current = finalText;
-        setTranscript(`${finalText} ${interimText}`.trim());
-        setInteractionState((s) => (s === 'listening' ? 'transcribing' : s));
-      },
-      onError: (evt) => {
-        const code = typeof evt === 'string' ? evt : evt?.error || evt?.code || evt?.type || 'unknown';
-        const msg = friendlyRecognitionError(code);
-        hasErrorRef.current = true;
-        try { recognizerRef.current?.abort?.(); } catch {}
-        setErrorMessage(msg);
-        setInteractionState('error');
-      },
-      onEnd: () => {
-        finalizeSession({ deliver: true });
-      },
-    });
+    const spawn = () => {
+      recognizerRef.current = createSpeechRecognition({
+        lang: 'en-US',
+        stallTimeoutMs: mobile ? 12000 : 0,
+        onAudioStart: () => {
+          if (seq !== sessionSeqRef.current) return;
+          audioStartedRef.current = true;
+          if (mobile) playReadyBeep();
+        },
+        onResult: ({ finalText, interimText }) => {
+          if (seq !== sessionSeqRef.current) return;
+          gotResultRef.current = true;
+          finalTextRef.current = finalText;
+          interimTextRef.current = interimText;
+          setTranscript(`${finalText} ${interimText}`.trim());
+          setInteractionState((s) => (s === 'listening' ? 'transcribing' : s));
+        },
+        onError: (evt) => {
+          if (seq !== sessionSeqRef.current) return;
+          const code =
+            typeof evt === 'string' ? evt : evt?.error || evt?.code || evt?.type || 'unknown';
+          // Android can hit its no-speech timeout before mic capture ever
+          // boots — restart once, silently, instead of blaming the user.
+          if (code === 'no-speech' && mobile && !audioStartedRef.current && !retriedRef.current) {
+            retriedRef.current = true;
+            try {
+              recognizerRef.current?.abort?.();
+            } catch {
+              /* noop */
+            }
+            spawn();
+            return;
+          }
+          const msg =
+            mobile && code === 'no-speech'
+              ? "I didn't catch any speech. Tap the mic, wait for the ready beep, then speak."
+              : friendlyRecognitionError(code);
+          hasErrorRef.current = true;
+          try {
+            recognizerRef.current?.abort?.();
+          } catch {
+            /* noop */
+          }
+          setErrorMessage(msg);
+          setInteractionState('error');
+        },
+        onEnd: () => {
+          if (seq !== sessionSeqRef.current) return;
+          finalizeSession({ deliver: true });
+        },
+      });
+      recognizerRef.current.start();
+    };
 
-    recognizerRef.current.start();
-  }, [attachStream, finalizeSession]);
+    spawn();
+  }, [attachStream, finalizeSession, playReadyBeep]);
 
   /** User taps stop — whatever was said so far becomes the user's message. */
   const stopListening = useCallback(() => {
@@ -378,6 +464,12 @@ export function VoiceProvider({ children }) {
       } catch {
         /* noop */
       }
+      try {
+        beepCtxRef.current?.close?.();
+      } catch {
+        /* noop */
+      }
+      beepCtxRef.current = null;
     },
     [detachStream],
   );

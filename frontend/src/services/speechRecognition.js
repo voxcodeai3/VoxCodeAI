@@ -46,6 +46,10 @@ export function createSpeechRecognition({
   onResult = () => {},
   onError = () => {},
   onEnd = () => {},
+  // Fires when the microphone capture is actually live. On Android there is
+  // a 1-2s gap between start() and this event — speech given during the gap
+  // is lost, which is why callers cue users with a ready beep.
+  onAudioStart = () => {},
   // When > 0, the session is torn down if the browser goes completely silent
   // (no start/result/error/end events) for this long. Mobile Safari can hang
   // forever after audio playback without ever firing an event.
@@ -116,7 +120,10 @@ export function createSpeechRecognition({
       recognition.maxAlternatives = 1;
 
       recognition.onstart = bumpStallTimer;
-      recognition.onaudiostart = bumpStallTimer;
+      recognition.onaudiostart = () => {
+        bumpStallTimer();
+        onAudioStart();
+      };
 
       recognition.onresult = (event) => {
         bumpStallTimer();
