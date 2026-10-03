@@ -7,6 +7,7 @@ import api from './api';
 
 let currentAudio = null;
 let currentToken = 0;
+let activeResolve = null;
 
 /**
  * Request AI TTS audio from the backend.
@@ -28,41 +29,69 @@ export async function fetchAiTts(text, { voice, speed } = {}) {
 }
 
 /**
- * Play audio from a URL. Returns a promise that resolves when playback ends.
+ * Play audio from a URL.
+ * Resolves 'ended' | 'error' | 'cancelled' so callers can chain chunks.
+ * onEnd/onError callbacks are kept for compatibility.
  */
 export function playAudio(url, { onEnd, onError } = {}) {
   stopAudio();
   const token = ++currentToken;
-  const audio = new Audio(url);
-  currentAudio = audio;
 
-  audio.onended = () => {
-    if (currentToken !== token) return;
-    currentAudio = null;
-    URL.revokeObjectURL(url);
-    onEnd?.();
-  };
+  return new Promise((resolve) => {
+    activeResolve = resolve;
 
-  audio.onerror = () => {
-    if (currentToken !== token) return;
-    currentAudio = null;
-    URL.revokeObjectURL(url);
-    onError?.();
-  };
+    const settle = (result, cb) => {
+      if (activeResolve === resolve) activeResolve = null;
+      cb?.();
+      resolve(result);
+    };
 
-  audio.play().catch(() => {
-    if (currentToken !== token) return;
-    currentAudio = null;
-    URL.revokeObjectURL(url);
-    onError?.();
+    const audio = new Audio(url);
+    currentAudio = audio;
+
+    audio.onended = () => {
+      if (currentToken !== token) {
+        settle('cancelled');
+        return;
+      }
+      currentAudio = null;
+      URL.revokeObjectURL(url);
+      settle('ended', onEnd);
+    };
+
+    audio.onerror = () => {
+      if (currentToken !== token) {
+        settle('cancelled');
+        return;
+      }
+      currentAudio = null;
+      URL.revokeObjectURL(url);
+      settle('error', onError);
+    };
+
+    audio.play().catch(() => {
+      if (currentToken !== token) {
+        settle('cancelled');
+        return;
+      }
+      currentAudio = null;
+      URL.revokeObjectURL(url);
+      settle('error', onError);
+    });
   });
 }
 
 /**
  * Stop any currently playing AI TTS audio.
+ * Any pending playAudio() promise resolves with 'cancelled'.
  */
 export function stopAudio() {
   currentToken += 1;
+  if (activeResolve) {
+    const resolve = activeResolve;
+    activeResolve = null;
+    resolve('cancelled');
+  }
   if (currentAudio) {
     try {
       currentAudio.pause();

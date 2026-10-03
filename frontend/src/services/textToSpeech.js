@@ -25,7 +25,7 @@ function synth() {
 }
 
 /** Split text into speakable chunks at sentence boundaries (~<=180 chars). */
-function chunkText(text) {
+export function chunkText(text) {
   const clean = String(text).replace(/\s+/g, ' ').trim();
   if (!clean) return [];
   const sentences = clean.match(/[^.!?;:\n]+[.!?;:]*[\])'"”’]*\s*/g) || [clean];

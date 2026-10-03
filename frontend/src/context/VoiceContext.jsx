@@ -69,6 +69,8 @@ export function VoiceProvider({ children }) {
   const audioStartedRef = useRef(false);
   const retriedRef = useRef(false);
   const beepCtxRef = useRef(null);
+  // Invalidates an in-flight chunked TTS chain when speech is interrupted.
+  const speakTokenRef = useRef(0);
 
   // handler registered by AIContext — receives finalized voice transcripts
   const finalHandlerRef = useRef(null);
@@ -277,6 +279,7 @@ export function VoiceProvider({ children }) {
 
     browserTts.stop(); // never let speech synthesis overlap a listening session
     aiTts.stopAudio(); // an active <audio> element breaks recognition on iOS Safari
+    speakTokenRef.current += 1; // kill any in-flight chunked TTS chain
     setSpokenMessageId(null);
     setTranscript('');
     setErrorMessage('');
@@ -381,23 +384,63 @@ export function VoiceProvider({ children }) {
     }
     setSpokenMessageId(messageId);
     setInteractionState('speaking');
+    const token = ++speakTokenRef.current;
 
-    // Try AI TTS first
+    const finish = () => {
+      if (token !== speakTokenRef.current) return;
+      setSpokenMessageId(null);
+      setInteractionState((s) => (s === 'speaking' ? 'idle' : s));
+    };
+
+    // Chunked playback: synthesize sentence-by-sentence with the next chunk
+    // prefetched while the current one plays. First audio starts after the
+    // first sentence is synthesized (~0.5s) instead of waiting for the whole
+    // reply (several seconds).
     if (aiTtsAvailable) {
-      const audioUrl = await aiTts.fetchAiTts(content);
-      if (audioUrl) {
-        aiTts.playAudio(audioUrl, {
-          onEnd: () => {
-            setSpokenMessageId(null);
-            setInteractionState((s) => (s === 'speaking' ? 'idle' : s));
-          },
-          onError: () => {
-            // Fall back to browser TTS
+      const chunks = browserTts.chunkText(content);
+      let index = 0;
+      let heardAny = false;
+      let prefetch = null;
+
+      const abandon = (pending) => {
+        if (pending) pending.then((u) => u && URL.revokeObjectURL(u));
+      };
+
+      while (index < chunks.length) {
+        if (token !== speakTokenRef.current) {
+          abandon(prefetch);
+          return;
+        }
+        const urlPromise = prefetch || aiTts.fetchAiTts(chunks[index]);
+        prefetch =
+          index + 1 < chunks.length ? aiTts.fetchAiTts(chunks[index + 1]) : null;
+        const url = await urlPromise;
+        index += 1;
+        if (token !== speakTokenRef.current) {
+          if (url) URL.revokeObjectURL(url);
+          abandon(prefetch);
+          return;
+        }
+        if (!url) {
+          if (!heardAny) {
+            // Provider failed on the very first chunk — browser fallback.
+            abandon(prefetch);
             speakBrowser(content, messageId);
-          },
-        });
-        return;
+            return;
+          }
+          continue; // skip a failed middle chunk, keep the flow
+        }
+        const result = await aiTts.playAudio(url);
+        if (result === 'cancelled') return;
+        if (result === 'ended') heardAny = true;
+        if (result === 'error' && !heardAny) {
+          abandon(prefetch);
+          speakBrowser(content, messageId);
+          return;
+        }
       }
+      finish();
+      return;
     }
 
     // Fallback to browser TTS
@@ -419,6 +462,7 @@ export function VoiceProvider({ children }) {
   }
 
   const stopSpeaking = useCallback(() => {
+    speakTokenRef.current += 1;
     aiTts.stopAudio();
     browserTts.stop();
     setSpokenMessageId(null);
@@ -428,6 +472,7 @@ export function VoiceProvider({ children }) {
   const toggleVoice = useCallback(() => {
     setVoiceEnabled((prev) => {
       if (prev) {
+        speakTokenRef.current += 1;
         aiTts.stopAudio();
         browserTts.stop();
       }
@@ -454,6 +499,7 @@ export function VoiceProvider({ children }) {
         /* noop */
       }
       recognizerRef.current = null;
+      speakTokenRef.current += 1;
       aiTts.stopAudio();
       browserTts.stop();
       loopingRef.current = false;
