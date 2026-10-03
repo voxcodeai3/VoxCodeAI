@@ -17,6 +17,7 @@ const FRIENDLY_ERRORS = {
   'no-speech': "I didn't catch any speech. Tap the mic and try again.",
   network: 'A network error interrupted speech recognition. Please try again.',
   unsupported: "Voice input isn't supported in this browser. You can type your question instead.",
+  stalled: 'Voice input stopped responding on this browser. Tap the mic and try again.',
 };
 
 export function friendlyRecognitionError(code) {
@@ -45,6 +46,10 @@ export function createSpeechRecognition({
   onResult = () => {},
   onError = () => {},
   onEnd = () => {},
+  // When > 0, the session is torn down if the browser goes completely silent
+  // (no start/result/error/end events) for this long. Mobile Safari can hang
+  // forever after audio playback without ever firing an event.
+  stallTimeoutMs = 0,
 } = {}) {
   const SR = isSpeechRecognitionSupported()
     ? window.SpeechRecognition || window.webkitSpeechRecognition
@@ -54,10 +59,41 @@ export function createSpeechRecognition({
   let finalText = '';
   let stoppedByUser = false;
   let endedHandled = false;
+  let stallTimer = 0;
+
+  const clearStallTimer = () => {
+    if (stallTimer) {
+      clearTimeout(stallTimer);
+      stallTimer = 0;
+    }
+  };
+
+  const bumpStallTimer = () => {
+    clearStallTimer();
+    if (!stallTimeoutMs || endedHandled) return;
+    stallTimer = setTimeout(() => {
+      stallTimer = 0;
+      if (stoppedByUser) {
+        // User already tapped stop but onend never came — deliver what we have.
+        handleEnd();
+        return;
+      }
+      onError('stalled');
+      if (recognition) {
+        try {
+          recognition.abort();
+        } catch {
+          /* noop */
+        }
+      }
+      handleEnd();
+    }, stallTimeoutMs);
+  };
 
   const handleEnd = () => {
     if (endedHandled) return;
     endedHandled = true;
+    clearStallTimer();
     recognition = null;
     onEnd();
   };
@@ -79,7 +115,11 @@ export function createSpeechRecognition({
       recognition.continuous = false;
       recognition.maxAlternatives = 1;
 
+      recognition.onstart = bumpStallTimer;
+      recognition.onaudiostart = bumpStallTimer;
+
       recognition.onresult = (event) => {
+        bumpStallTimer();
         let interim = '';
         for (let i = event.resultIndex; i < event.results.length; i += 1) {
           const result = event.results[i];
@@ -104,6 +144,7 @@ export function createSpeechRecognition({
       recognition.onend = handleEnd;
 
       recognition.start();
+      bumpStallTimer();
     } catch {
       // start() can throw synchronously if called while already started, etc.
       onError('unknown');
@@ -128,6 +169,7 @@ export function createSpeechRecognition({
   /** Silent cancel — nothing is delivered. */
   const abort = () => {
     stoppedByUser = true;
+    clearStallTimer();
     if (recognition) {
       try {
         recognition.abort();

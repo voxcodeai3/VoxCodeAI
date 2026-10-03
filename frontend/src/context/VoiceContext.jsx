@@ -25,6 +25,16 @@ import * as aiTts from '../services/aiTts';
 
 const VoiceContext = createContext(null);
 
+/**
+ * On Android Chrome, holding a getUserMedia stream while SpeechRecognition
+ * runs makes recognition hear nothing (Chromium bug 41403126) — it works on
+ * desktop, which is why it went unnoticed. Mobile browsers keep the
+ * visualizer stream closed during a recognition session instead.
+ */
+const isMobileBrowser = () =>
+  typeof navigator !== 'undefined' &&
+  /\b(Android|iPhone|iPad|iPod)\b/i.test(navigator.userAgent || '');
+
 export function useVoice() {
   const ctx = useContext(VoiceContext);
   if (!ctx) throw new Error('useVoice must be used inside <VoiceProvider>');
@@ -227,6 +237,7 @@ export function VoiceProvider({ children }) {
     }
 
     browserTts.stop(); // never let speech synthesis overlap a listening session
+    aiTts.stopAudio(); // an active <audio> element breaks recognition on iOS Safari
     setSpokenMessageId(null);
     setTranscript('');
     setErrorMessage('');
@@ -235,10 +246,12 @@ export function VoiceProvider({ children }) {
     gotResultRef.current = false;
     setInteractionState('listening');
 
-    attachStream();
+    const mobile = isMobileBrowser();
+    if (!mobile) attachStream();
 
     recognizerRef.current = createSpeechRecognition({
       lang: 'en-US',
+      stallTimeoutMs: mobile ? 12000 : 0,
       onResult: ({ finalText, interimText }) => {
         gotResultRef.current = true;
         finalTextRef.current = finalText;
