@@ -34,7 +34,13 @@ exports.startSession = async (req, res) => {
       { path: "stage", select: "title slug level" },
       { path: "topic", select: "title slug description" },
     ]);
-    res.status(201).json({ session });
+    // Position right after (re)starting so clients can render the header/roadmap
+    // highlight without a second request.
+    let position = null;
+    try {
+      position = await getPosition(session.learningPath, session.topic);
+    } catch {}
+    res.status(201).json({ session, position });
   } catch (err) {
     const status = err.status || 500;
     if (status === 404 || status === 400) return res.status(status).json({ message: err.message });

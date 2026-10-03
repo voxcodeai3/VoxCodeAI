@@ -33,8 +33,12 @@ export default function PathSelector({ onSelect }) {
     return () => { cancelled = true; };
   }, []);
 
+  // Hide paths with no Stage/Topic curriculum — the teaching roadmap would be
+  // empty for them (hasCurriculum is absent on older backends → keep showing).
+  const curriculumPaths = paths.filter(p => p.hasCurriculum !== false);
+
   const q = search.trim().toLowerCase();
-  const filtered = paths.filter(p => {
+  const filtered = curriculumPaths.filter(p => {
     if (q) {
       const hay = [p.title, p.description, ...(p.technologies || []).map(t => t.name || t.slug || '')].join(' ').toLowerCase();
       if (!hay.includes(q)) return false;

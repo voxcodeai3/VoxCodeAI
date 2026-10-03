@@ -62,7 +62,36 @@ exports.getPaths = async (req, res) => {
     // default to published only
     q.status = "published";
     const paths = await LearningPath.find(q).populate("technologies").populate("prerequisites").sort({ order: 1, title: 1 });
-    res.json(paths);
+
+    // Curriculum counts — course-only paths have no Stage/Topic docs, so the
+    // teaching roadmap would render empty for them. Clients use hasCurriculum
+    // to hide such paths from the path picker.
+    const pathIds = paths.map((p) => p._id);
+    const stages = await Stage.find({ learningPath: { $in: pathIds }, status: "published" }).select("_id learningPath").lean();
+    const stageToPath = new Map(stages.map((s) => [String(s._id), String(s.learningPath)]));
+    const topics = await Topic.find({ stage: { $in: stages.map((s) => s._id) }, status: "published" }).select("stage").lean();
+
+    const stageCountByPath = {};
+    for (const s of stages) {
+      const k = String(s.learningPath);
+      stageCountByPath[k] = (stageCountByPath[k] || 0) + 1;
+    }
+    const topicCountByPath = {};
+    for (const t of topics) {
+      const k = stageToPath.get(String(t.stage));
+      if (k) topicCountByPath[k] = (topicCountByPath[k] || 0) + 1;
+    }
+
+    res.json(
+      paths.map((p) => {
+        const obj = p.toObject();
+        const id = String(p._id);
+        obj.stageCount = stageCountByPath[id] || 0;
+        obj.topicCount = topicCountByPath[id] || 0;
+        obj.hasCurriculum = obj.topicCount > 0;
+        return obj;
+      })
+    );
   } catch (err) {
     res.status(500).json({ message: "Failed to load learning paths" });
   }

@@ -49,7 +49,12 @@ export default function LearningExperience({ pathId, onSwitchPath }) {
         setPosition(currentRes.data.position);
         setTeachingState(currentRes.data.session.teachingState || 'teaching');
       } else {
-        const topicId = currentRes.data.position?.current?.id;
+        // No active session — resolve the saved position (the position endpoint
+        // falls back to the student's stored currentTopic) and start one there,
+        // or at the first roadmap topic when nothing is saved yet.
+        const posRes = await api.get(`/learning/paths/${pathId}/position`).catch(() => null);
+        const firstTopic = roadmapRes.data.stages?.find(s => s.topics?.length)?.topics?.[0];
+        const topicId = posRes?.data?.current?.id || firstTopic?.id;
         if (topicId) {
           const sessRes = await api.post('/learning/teaching/session/start', {
             learningPathId: pathId,
@@ -57,7 +62,7 @@ export default function LearningExperience({ pathId, onSwitchPath }) {
           });
           setSession(sessRes.data.session);
           setSessionId(sessRes.data.session._id);
-          setPosition(currentRes.data.position);
+          setPosition(sessRes.data.position || posRes?.data || null);
           setTeachingState(sessRes.data.session.teachingState || 'teaching');
         }
       }
@@ -197,6 +202,9 @@ export default function LearningExperience({ pathId, onSwitchPath }) {
   const pathTitle = roadmap?.path?.title || 'Learning Path';
   const completedIds = new Set((summary?.completedTopics || []).map(t => typeof t === 'string' ? t : t?._id));
   const reviewIds = new Set(reviewItems.filter(r => r.topicId).map(r => r.topicId));
+  // Entries recorded without a topicId (e.g. weakness names from an assessment
+  // run against an empty roadmap) can't be re-taught — don't list them.
+  const reviewList = reviewItems.filter(item => item.topicId);
 
   return (
     <div className="min-h-[calc(100vh-4rem)]">
@@ -249,18 +257,18 @@ export default function LearningExperience({ pathId, onSwitchPath }) {
               </div>
             )}
 
-            {reviewItems.length > 0 && (
+            {reviewList.length > 0 && (
               <div className="mt-4 border-t border-white/[0.06] pt-4">
                 <div className="text-[11px] tracking-widest text-white/40 mb-2">NEEDS REVIEW</div>
                 <div className="space-y-1.5">
-                  {reviewItems.slice(0, 5).map(item => (
-                    <div key={item.topicId || item.topicName} className="flex items-center gap-2 text-xs">
+                  {reviewList.slice(0, 5).map(item => (
+                    <div key={item.topicId} className="flex items-center gap-2 text-xs">
                       <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${
                         item.priority === 'HIGH' ? 'bg-rose-400' : item.priority === 'MEDIUM' ? 'bg-amber-400' : 'bg-white/20'
                       }`} />
                       <span className="text-white/60 truncate flex-1">{item.topicName}</span>
                       <button
-                        onClick={() => item.topicId && handleReviewTopic({ id: item.topicId, title: item.topicName })}
+                        onClick={() => handleReviewTopic({ id: item.topicId, title: item.topicName })}
                         className="text-cyan-400/60 hover:text-cyan-400 shrink-0 min-w-[32px] min-h-[32px] flex items-center justify-center"
                       >
                         Review
