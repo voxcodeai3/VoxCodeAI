@@ -252,8 +252,34 @@ async function sendPasswordResetEmail(toEmail, code) {
   }
 }
 
+async function sendPasswordChangedEmail(toEmail, { wasSet = false } = {}) {
+  const action = wasSet ? "Password set" : "Password changed";
+  const when = new Date().toUTCString();
+  try {
+    return await sendWithFallback({
+      from: getFrom(),
+      to: toEmail,
+      subject: `${action} - VoxCode`,
+      text: `VoxCode\n\n${action}\n\nThe password for your VoxCode account was ${wasSet ? "set" : "changed"} on ${when}.\n\nIf you did this, no action is needed.\nIf you did not, request a new password reset immediately and contact support.`,
+      html: `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <h2>VoxCode</h2>
+          <p>${action}</p>
+          <p>The password for your VoxCode account was ${wasSet ? "set" : "changed"} on ${when}.</p>
+          <p>If you did this, no action is needed.</p>
+          <p style="color: #b91c1c;">If you did not, request a new password reset immediately and contact support.</p>
+        </div>
+      `,
+    });
+  } catch (error) {
+    console.error("Failed to send password changed email:", error.message);
+    return false;
+  }
+}
+
 module.exports = {
   sendVerificationEmail,
   sendPasswordResetEmail,
+  sendPasswordChangedEmail,
   diagnose,
 };

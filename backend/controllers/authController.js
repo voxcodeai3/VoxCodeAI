@@ -606,10 +606,17 @@ async function resetPassword(req, res) {
     user.emailVerified = true;
 
     await user.save();
+
+    // Security notification: confirm the change by email. Fire-and-forget so
+    // a slow mail server never blocks the response.
+    emailService
+      .sendPasswordChangedEmail(user.email, { wasSet: !hadPassword })
+      .catch(() => {});
+
     return res.json({
       message: hadPassword
-        ? "Password has been successfully reset."
-        : "Password set successfully. You can now sign in with your email and password.",
+        ? "Password has been successfully reset. Check your inbox for a confirmation email."
+        : "Password set successfully. You can now sign in with your email and password. Check your inbox for a confirmation email.",
     });
   } catch (error) {
     console.error("resetPassword error:", error);

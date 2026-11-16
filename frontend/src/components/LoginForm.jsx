@@ -320,6 +320,10 @@ function LoginForm({ onInteraction }) {
           <p className="text-slate-400">
             Enter your email address to receive a password reset code.
           </p>
+          <p className="mt-2 text-xs text-slate-500">
+            For your security, your password is only changed after the emailed
+            code is verified.
+          </p>
         </div>
 
         <div>
@@ -382,6 +386,9 @@ function LoginForm({ onInteraction }) {
               {values.email}
             </span>{" "}
             and your new password.
+          </p>
+          <p className="mt-2 text-xs text-slate-500">
+            Your password is only updated once this code is verified.
           </p>
         </div>
 

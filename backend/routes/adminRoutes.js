@@ -11,6 +11,7 @@ const LearningPath = require("../models/LearningPath");
 const Stage = require("../models/Stage");
 const { Lesson } = require("../models/Course");
 const ttsService = require("../services/ttsService");
+const emailService = require("../services/emailService");
 
 // All admin routes require auth + admin
 router.use(authMiddleware, requireAdmin);
@@ -476,7 +477,8 @@ router.patch("/password", async (req, res) => {
 
     user.password = await bcrypt.hash(newPassword, 10);
     await user.save();
-    return res.json({ message: "Password changed successfully." });
+    emailService.sendPasswordChangedEmail(user.email).catch(() => {});
+    return res.json({ message: "Password changed successfully. Check your inbox for a confirmation email." });
   } catch (err) {
     console.error("Admin password change error:", err);
     return res.status(500).json({ message: "Failed to change password." });
