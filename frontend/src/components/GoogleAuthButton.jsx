@@ -38,13 +38,14 @@ function OrDivider() {
   )
 }
 
-function GoogleAuthButton() {
+function GoogleAuthButton({ mode = 'student' }) {
   const [loading, setLoading] = useState(false)
 
   const handleGoogle = () => {
     if (loading) return
     setLoading(true)
-    window.location.href = `${API_BASE}/auth/google`
+    const query = mode === 'admin' ? '?mode=admin' : ''
+    window.location.href = `${API_BASE}/auth/google${query}`
   }
 
   return (

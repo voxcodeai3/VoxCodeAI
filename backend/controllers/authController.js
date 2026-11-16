@@ -77,13 +77,15 @@ async function hashString(str) {
 
 const FRONTEND_URL = process.env.FRONTEND_URL || "http://localhost:5173";
 
-function redirectToFrontend(res, { token, user, error }) {
+function redirectToFrontend(res, { token, user, error, mode }) {
   const params = new URLSearchParams();
+  if (mode) params.set("mode", mode);
   if (token) {
     params.set("token", token);
     params.set("id", user.id);
     params.set("name", user.name);
     params.set("email", user.email);
+    params.set("role", user.role || "student");
     if (user.avatar) params.set("avatar", user.avatar);
     params.set("authProvider", user.authProvider);
   }
@@ -631,6 +633,15 @@ async function me(req, res) {
 }
 
 async function googleAuth(req, res) {
+  // Remember which portal the user picked. The state is signed so the
+  // callback can trust it (and it doubles as OAuth CSRF protection).
+  const mode = req.query.mode === "admin" ? "admin" : "student";
+  const state = jwt.sign(
+    { purpose: "google-oauth", mode },
+    process.env.JWT_SECRET,
+    { expiresIn: "10m" },
+  );
+
   const client = getGoogleClient();
   const authUrl = client.generateAuthUrl({
     access_type: "offline",
@@ -639,15 +650,34 @@ async function googleAuth(req, res) {
       "https://www.googleapis.com/auth/userinfo.profile",
       "https://www.googleapis.com/auth/userinfo.email",
     ],
+    state,
   });
   res.redirect(authUrl);
 }
 
 async function googleCallback(req, res) {
+  // Recover the portal from the signed state. Links created before this
+  // existed have no state and default to the student portal.
+  let mode = "student";
+  if (req.query.state) {
+    try {
+      const decoded = jwt.verify(req.query.state, process.env.JWT_SECRET);
+      if (decoded?.purpose === "google-oauth" && decoded.mode === "admin") {
+        mode = "admin";
+      }
+    } catch (error) {
+      return redirectToFrontend(res, {
+        error: "Your sign-in session expired. Please try again.",
+        mode,
+      });
+    }
+  }
+
   const code = req.query.code;
   if (!code) {
     return redirectToFrontend(res, {
       error: "Google authentication was cancelled.",
+      mode,
     });
   }
 
@@ -661,6 +691,7 @@ async function googleCallback(req, res) {
     console.error("Google token exchange failed:", error.message);
     return redirectToFrontend(res, {
       error: "Unable to authenticate with Google. Please try again.",
+      mode,
     });
   }
 
@@ -676,12 +707,14 @@ async function googleCallback(req, res) {
     console.error("Google ID token verification failed:", error.message);
     return redirectToFrontend(res, {
       error: "Unable to authenticate with Google. Please try again.",
+      mode,
     });
   }
 
   if (!payload || !payload.email) {
     return redirectToFrontend(res, {
       error: "Authentication failed. Please try again.",
+      mode,
     });
   }
 
@@ -711,6 +744,7 @@ async function googleCallback(req, res) {
       // The address is already linked to a different Google account.
       return redirectToFrontend(res, {
         error: "Authentication failed. Please try again.",
+        mode,
       });
     } else {
       // Link Google to the existing account instead of rejecting it, so an
@@ -718,6 +752,7 @@ async function googleCallback(req, res) {
       if (user.password && !googleEmailVerified) {
         return redirectToFrontend(res, {
           error: "Please verify your Google email address before signing in.",
+          mode,
         });
       }
       if (!user.googleId) {
@@ -734,12 +769,23 @@ async function googleCallback(req, res) {
       await user.save();
     }
 
+    // The Admin portal matches the password login rule: only admins and
+    // super admins may enter through it.
+    if (mode === "admin" && user.role !== "admin" && user.role !== "super_admin") {
+      return redirectToFrontend(res, {
+        error:
+          "You do not have administrator access. Sign in through the Student portal instead.",
+        mode,
+      });
+    }
+
     const token = signToken(user);
-    return redirectToFrontend(res, { token, user: publicUser(user) });
+    return redirectToFrontend(res, { token, user: publicUser(user), mode });
   } catch (error) {
     console.error("Google callback error:", error);
     return redirectToFrontend(res, {
       error: "Unable to authenticate with Google. Please try again.",
+      mode,
     });
   }
 }

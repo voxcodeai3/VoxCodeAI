@@ -633,7 +633,7 @@ function LoginForm({ onInteraction }) {
         </span>
       </button>
 
-      <GoogleAuthButton />
+      <GoogleAuthButton mode={loginMode} />
 
       <p className="mt-1 text-center text-sm text-slate-400">
         Don't have an account?{" "}

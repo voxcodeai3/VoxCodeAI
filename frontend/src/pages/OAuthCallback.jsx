@@ -4,6 +4,7 @@ import { ShieldCheck, AlertTriangle, ArrowLeft } from 'lucide-react'
 import VoxLogo from '../components/VoxLogo'
 import FuturisticBackground from '../components/FuturisticBackground'
 import { useAuth } from '../context/AuthContext'
+import api from '../services/api'
 
 function OAuthCallback() {
   const [params] = useSearchParams()
@@ -17,16 +18,66 @@ function OAuthCallback() {
   const email = params.get('email') || ''
   const avatar = params.get('avatar') || null
   const authProvider = params.get('authProvider') || 'google'
+  const mode = params.get('mode') || 'student'
+  const roleParam = params.get('role') || ''
 
   useEffect(() => {
     if (!token || error) return
-    login({ token, user: { id, name, email, avatar, authProvider } }, true)
-    const timer = setTimeout(() => navigate('/voxcode', { replace: true }), 1100)
-    return () => clearTimeout(timer)
-  }, [token, error, id, name, email, login, navigate])
+    let cancelled = false
+
+    // Store the token first so /auth/me can authenticate, then refresh the
+    // full profile (role, permissions) instead of relying on URL params.
+    const initialUser = {
+      id,
+      name,
+      email,
+      avatar,
+      authProvider,
+      role: roleParam || undefined,
+    }
+    login({ token, user: initialUser }, true)
+
+    const go = (user) => {
+      if (cancelled) return
+      const isAdmin = user?.role === 'admin' || user?.role === 'super_admin'
+      const target = mode === 'admin' && isAdmin ? '/admin' : '/voxcode'
+      setTimeout(() => {
+        if (!cancelled) navigate(target, { replace: true })
+      }, 900)
+    }
+
+    api
+      .get('/auth/me')
+      .then((res) => {
+        if (cancelled) return
+        const user = res.data.user
+        login({ token, user }, true)
+        go(user)
+      })
+      .catch(() => go(initialUser))
+
+    return () => {
+      cancelled = true
+    }
+  }, [
+    token,
+    error,
+    id,
+    name,
+    email,
+    avatar,
+    authProvider,
+    mode,
+    roleParam,
+    login,
+    navigate,
+  ])
 
   let status = 'success'
-  let message = 'Authentication successful...'
+  let message =
+    mode === 'admin'
+      ? 'Authentication successful. Redirecting to the admin console...'
+      : 'Authentication successful...'
   if (error) {
     status = 'error'
     message = error
