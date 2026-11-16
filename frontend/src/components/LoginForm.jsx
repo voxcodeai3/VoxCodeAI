@@ -54,6 +54,7 @@ function LoginForm({ onInteraction }) {
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
   const [formError, setFormError] = useState(null);
+  const [googleAccount, setGoogleAccount] = useState(false);
   const [loginMode, setLoginMode] = useState("student");
   const navigate = useNavigate();
 
@@ -74,6 +75,7 @@ function LoginForm({ onInteraction }) {
   const update = (key) => (e) => {
     setValues((v) => ({ ...v, [key]: e.target.value }));
     setErrors((err) => ({ ...err, [key]: undefined }));
+    setGoogleAccount(false);
   };
 
   const validate = () => {
@@ -97,6 +99,7 @@ function LoginForm({ onInteraction }) {
     if (!validate()) return;
     setLoading(true);
     setFormError(null);
+    setGoogleAccount(false);
 
     try {
       const res = await api.post("/auth/login", {
@@ -121,6 +124,9 @@ function LoginForm({ onInteraction }) {
           .catch(() => {});
         setResendCooldown(60);
         setFormError(null);
+      } else if (error.response?.data?.code === "USE_GOOGLE") {
+        setGoogleAccount(true);
+        setFormError(error.response.data.message);
       } else {
         setFormError(
           error.response?.data?.message || "Invalid email or password.",
@@ -544,7 +550,23 @@ function LoginForm({ onInteraction }) {
       {formError && (
         <div className="flex items-start gap-2.5 rounded-lg border border-rose-400/30 bg-rose-400/10 px-4 py-3 text-sm text-rose-200">
           <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-rose-300" />
-          <p>{formError}</p>
+          <div className="min-w-0">
+            <p>{formError}</p>
+            {googleAccount && (
+              <button
+                type="button"
+                onClick={() => {
+                  setMode("forgot");
+                  setFormError(null);
+                  setGoogleAccount(false);
+                }}
+                className="mt-2 inline-flex items-center gap-1.5 font-medium text-cyan-200 underline-offset-4 transition-colors hover:text-cyan-100 hover:underline"
+              >
+                <KeyRound className="h-3.5 w-3.5" />
+                Set a password for this account
+              </button>
+            )}
+          </div>
         </div>
       )}
 

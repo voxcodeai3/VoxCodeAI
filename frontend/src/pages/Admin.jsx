@@ -430,7 +430,13 @@ function UserDetailsModal({
               <div className="rounded-lg bg-white/[0.02] border border-white/[0.06] p-3">
                 <p className="text-white/30 mb-0.5">Auth Provider</p>
                 <p className="text-white/70 capitalize">
-                  {u.authProvider || "local"}
+                  {u.googleLinked
+                    ? u.hasPassword
+                      ? "Google + Password"
+                      : "Google"
+                    : u.hasPassword
+                      ? "Password"
+                      : "Local"}
                 </p>
               </div>
               {u.role !== "student" && u.adminPermissions && (

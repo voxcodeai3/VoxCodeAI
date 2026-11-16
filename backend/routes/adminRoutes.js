@@ -24,6 +24,8 @@ function sanitizeUser(u) {
     role: u.role,
     avatar: u.avatar || null,
     authProvider: u.authProvider || "local",
+    hasPassword: Boolean(u.password),
+    googleLinked: Boolean(u.googleId),
     createdAt: u.createdAt,
     lastUsedAt: u.lastUsedAt || null,
     aiUsage: u.aiUsage || { total: 0, voice: 0, text: 0, lastUsedAt: null },
@@ -106,7 +108,7 @@ router.get("/users", requirePermission("viewUsers"), async (req, res) => {
 
     const [users, total] = await Promise.all([
       User.find(userQuery)
-        .select("name email role avatar authProvider adminPermissions createdAt lastUsedAt aiUsage")
+        .select("name email role avatar authProvider googleId +password adminPermissions createdAt lastUsedAt aiUsage")
         .sort({ createdAt: -1 })
         .skip(skip)
         .limit(limit)
@@ -140,6 +142,8 @@ router.get("/users", requirePermission("viewUsers"), async (req, res) => {
         role: u.role,
         avatar: u.avatar || null,
         authProvider: u.authProvider || "local",
+        hasPassword: Boolean(u.password),
+        googleLinked: Boolean(u.googleId),
         adminPermissions: u.adminPermissions || { viewUsers: false, viewProgress: false, viewAIUsage: false, deleteUsers: false, manageAdmins: false, manageSettings: false },
         permissions: u.role === "super_admin"
           ? { viewUsers: true, viewProgress: true, viewAIUsage: true, deleteUsers: true, manageAdmins: true, manageSettings: true }
@@ -182,7 +186,7 @@ router.get("/users/:id", requirePermission("viewUsers"), async (req, res) => {
     }
 
     const user = await User.findById(id)
-      .select("name email role avatar authProvider adminPermissions createdAt lastUsedAt aiUsage")
+      .select("name email role avatar authProvider googleId +password adminPermissions createdAt lastUsedAt aiUsage")
       .lean();
 
     if (!user) {
@@ -220,6 +224,8 @@ router.get("/users/:id", requirePermission("viewUsers"), async (req, res) => {
         role: user.role,
         avatar: user.avatar || null,
         authProvider: user.authProvider || "local",
+        hasPassword: Boolean(user.password),
+        googleLinked: Boolean(user.googleId),
         adminPermissions: user.adminPermissions || {},
         createdAt: user.createdAt,
         lastUsedAt: user.lastUsedAt || null,
@@ -254,7 +260,7 @@ router.get("/users/:id", requirePermission("viewUsers"), async (req, res) => {
 router.get("/admins", requirePermission("manageAdmins"), async (req, res) => {
   try {
     const admins = await User.find({ role: { $in: ["admin", "super_admin"] } })
-      .select("name email role avatar authProvider adminPermissions createdAt lastUsedAt updatedAt")
+      .select("name email role avatar authProvider googleId +password adminPermissions createdAt lastUsedAt updatedAt")
       .sort({ role: -1, createdAt: -1 })
       .lean();
     const sanitized = admins.map((u) => ({
@@ -264,6 +270,8 @@ router.get("/admins", requirePermission("manageAdmins"), async (req, res) => {
       role: u.role,
       avatar: u.avatar || null,
       authProvider: u.authProvider || "local",
+      hasPassword: Boolean(u.password),
+      googleLinked: Boolean(u.googleId),
       // super_admin always shows full permissions
       permissions: u.role === "super_admin"
         ? { viewUsers: true, viewProgress: true, viewAIUsage: true, deleteUsers: true, manageAdmins: true, manageSettings: true }

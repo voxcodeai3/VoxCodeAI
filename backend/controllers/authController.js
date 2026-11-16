@@ -46,10 +46,19 @@ function publicUser(user) {
     email: user.email,
     avatar: user.avatar || null,
     authProvider: user.authProvider || "local",
+    hasPassword: Boolean(user.password),
+    googleLinked: Boolean(user.googleId),
     role: user.role || "student",
     permissions: perms,
     emailVerified: user.emailVerified,
   };
+}
+
+// A user can sign in with either method once both are configured. Older
+// accounts only have one, so the flags above let the UI explain what to do
+// instead of showing a generic "invalid password" error.
+function isGoogleOnly(user) {
+  return !user.password && Boolean(user.googleId || user.authProvider === "google");
 }
 
 function signToken(user) {
@@ -116,8 +125,15 @@ async function register(req, res) {
       }
     } catch (_) {}
 
-    const existing = await User.findOne({ email });
+    const existing = await User.findOne({ email }).select("+password");
     if (existing) {
+      if (isGoogleOnly(existing)) {
+        return res.status(409).json({
+          code: "ACCOUNT_EXISTS_GOOGLE",
+          message:
+            "This email is already registered with Google. Sign in with Google, or use “Forgot password” to set a password for this account.",
+        });
+      }
       return res
         .status(409)
         .json({ message: "An account with this email already exists" });
@@ -234,6 +250,13 @@ async function login(req, res) {
     }
 
     if (!user.password) {
+      if (isGoogleOnly(user)) {
+        return res.status(403).json({
+          code: "USE_GOOGLE",
+          message:
+            "This account was created with Google. Continue with Google below, or choose “Set a password” to add a password to this account.",
+        });
+      }
       return res.status(401).json({ message: "Invalid email or password." });
     }
 
@@ -348,7 +371,7 @@ async function verifyEmail(req, res) {
     // Legacy path: accounts created before the pending-registration flow
     // still hold their unverified state on the User document.
     const user = await User.findOne({ email }).select(
-      "+verificationCodeHash +verificationExpiresAt +verificationAttempts",
+      "+password +verificationCodeHash +verificationExpiresAt +verificationAttempts",
     );
     if (!user) return res.status(404).json({ message: "User not found." });
     if (user.emailVerified)
@@ -542,7 +565,7 @@ async function resetPassword(req, res) {
 
   try {
     const user = await User.findOne({ email }).select(
-      "+resetCodeHash +resetExpiresAt +resetAttempts",
+      "+password +resetCodeHash +resetExpiresAt +resetAttempts",
     );
     if (!user)
       return res
@@ -570,6 +593,9 @@ async function resetPassword(req, res) {
       return res.status(400).json({ message: "Invalid verification code." });
     }
 
+    // A Google-only account has no password yet. Setting one here links a
+    // local password to the same account, so both sign-in methods work.
+    const hadPassword = Boolean(user.password);
     user.password = await hashString(newPassword);
     user.resetCodeHash = undefined;
     user.resetExpiresAt = undefined;
@@ -578,7 +604,11 @@ async function resetPassword(req, res) {
     user.emailVerified = true;
 
     await user.save();
-    return res.json({ message: "Password has been successfully reset." });
+    return res.json({
+      message: hadPassword
+        ? "Password has been successfully reset."
+        : "Password set successfully. You can now sign in with your email and password.",
+    });
   } catch (error) {
     console.error("resetPassword error:", error);
     return res.status(500).json({ message: "Something went wrong." });
@@ -587,7 +617,7 @@ async function resetPassword(req, res) {
 
 async function me(req, res) {
   try {
-    const user = await User.findById(req.user.id);
+    const user = await User.findById(req.user.id).select("+password");
     if (!user) {
       return res.status(401).json({ message: "Invalid or expired session." });
     }
@@ -659,27 +689,11 @@ async function googleCallback(req, res) {
   const email = (payload.email || "").toLowerCase();
   const name = payload.name || email.split("@")[0];
   const avatar = payload.picture || null;
+  // Google only proves ownership of the address when it says it verified it.
+  const googleEmailVerified = payload.email_verified !== false;
 
   try {
-    let user = await User.findOne({ email });
-
-    if (user && user.authProvider === "google" && user.googleId === googleId) {
-      const token = signToken(user);
-      return redirectToFrontend(res, { token, user: publicUser(user) });
-    }
-
-    if (user && user.authProvider === "local") {
-      return redirectToFrontend(res, {
-        error:
-          "An account with this email already exists. Please sign in with your password.",
-      });
-    }
-
-    if (user && user.googleId && user.googleId !== googleId) {
-      return redirectToFrontend(res, {
-        error: "Authentication failed. Please try again.",
-      });
-    }
+    let user = await User.findOne({ email }).select("+password");
 
     if (!user) {
       // Google proved ownership of this address, so any unverified signup
@@ -691,13 +705,32 @@ async function googleCallback(req, res) {
         googleId,
         authProvider: "google",
         avatar,
-        emailVerified: true,
+        emailVerified: googleEmailVerified,
       });
-    } else if (!user.googleId) {
-      user.googleId = googleId;
-      user.authProvider = "google";
-      user.avatar = avatar;
-      user.emailVerified = true;
+    } else if (user.googleId && user.googleId !== googleId) {
+      // The address is already linked to a different Google account.
+      return redirectToFrontend(res, {
+        error: "Authentication failed. Please try again.",
+      });
+    } else {
+      // Link Google to the existing account instead of rejecting it, so an
+      // account can use both Google and a password.
+      if (user.password && !googleEmailVerified) {
+        return redirectToFrontend(res, {
+          error: "Please verify your Google email address before signing in.",
+        });
+      }
+      if (!user.googleId) {
+        user.googleId = googleId;
+        user.avatar = user.avatar || avatar;
+      }
+      // Google has proven ownership, so this also verifies local signups.
+      if (googleEmailVerified && !user.emailVerified) {
+        user.emailVerified = true;
+      }
+      // authProvider records how the account was created. A local account
+      // keeps "local" even after Google is linked to it.
+      user.lastUsedAt = new Date();
       await user.save();
     }
 
